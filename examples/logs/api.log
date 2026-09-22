@@ -1,0 +1,6 @@
+2026-09-22T13:58:01Z checkout-api INFO request POST /checkout status=200 latency_ms=140
+2026-09-22T14:02:11Z payments-api INFO deploy version=1.42.0
+2026-09-22T14:02:40Z checkout-api ERROR upstream payments-api status=500 body="card vault timeout"
+2026-09-22T14:03:02Z payments-api ERROR vault connection timed out host=vault.internal:8443
+2026-09-22T14:03:15Z checkout-api ERROR request POST /checkout status=500 latency_ms=3010
+2026-09-22T14:04:01Z catalog-api INFO request GET /products status=200 latency_ms=40
