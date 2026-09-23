@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from incident_investigation_agent.config import Settings
+from incident_investigation_agent.core.config import Settings
 
 
 def build_model(settings: Settings):
@@ -12,6 +12,7 @@ def build_model(settings: Settings):
         return OllamaModel(
             host=settings.ollama_host,
             model_id=settings.ollama_model,
+            temperature=0,
         )
 
     from strands.models.bedrock import BedrockModel

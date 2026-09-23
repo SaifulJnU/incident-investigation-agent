@@ -27,7 +27,9 @@ def investigation_prompt(brief: IncidentBrief, evidence: list) -> str:
         lines.append("Evidence already recorded:")
         for item in evidence:
             lines.append(f"- [{item.kind}] {item.summary} (source: {item.source})")
-    lines.append("Investigate and write the incident note.")
+    lines.append(
+        "Start by calling search_logs. Do not write the incident note until a tool result has come back."
+    )
     return "\n".join(lines)
 
 
