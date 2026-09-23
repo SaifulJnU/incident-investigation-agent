@@ -92,7 +92,7 @@ export function SignIn() {
       {config?.mode === "dev" ? (
         <form onSubmit={onDev} className="intake">
           <label>
-            Subject
+            Username
             <input value={subject} onChange={(event) => setSubject(event.target.value)} required autoComplete="username" />
           </label>
           <label>

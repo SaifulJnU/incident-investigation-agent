@@ -78,7 +78,7 @@ Docker Desktop is enough. The API image runs migrations on startup. Ollama on th
 docker compose up --build
 ```
 
-Open http://localhost:8080. The API is on port 8000. Local compose signs you in with a development password, not the company identity provider. Use subject `oncall` and password `oncall-local` for checkout and payments, or `platform` and `platform-local` for every service. Then use "Use the checkout sample", open the case, and Investigate. The sample log for that service is `examples/logs/checkout-api/api.log`. An investigation only searches the directory for the case's service.
+Open http://localhost:8080. The API is on port 8000. Local compose signs you in with a username and password, not the company identity provider. Use username `oncall` and password `oncall-local` for checkout and payments, or `platform` and `platform-local` for every service. Then use "Use the checkout sample", open the case, and Investigate. The sample log for that service is `examples/logs/checkout-api/api.log`. An investigation only searches the directory for the case's service.
 
 Production sets `AUTH_MODE=oidc` with `OIDC_ISSUER`, `OIDC_AUDIENCE`, and `OIDC_CLIENT_ID`. The access token must be a signed JWT. A `services` claim lists the services that person may open. The role `incident-admin` may open every service. Do not set `DEV_AUTH_SECRET` in production.
 

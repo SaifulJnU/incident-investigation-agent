@@ -21,7 +21,7 @@ Open http://localhost:8080. Sign in before the case list loads.
 
 Local compose is not the company identity provider. It accepts two development accounts:
 
-| Subject | Password | May open |
+| Username | Password | May open |
 | --- | --- | --- |
 | `oncall` | `oncall-local` | `checkout-api`, `payments-api` |
 | `platform` | `platform-local` | every service |
@@ -40,7 +40,7 @@ Use another pulled model by starting compose with `OLLAMA_MODEL` set to that tag
 
 ### Walk through the sample
 
-The image includes `examples/logs/checkout-api/api.log`. That file is the only system a checkout case can search. A person must sign in first. Local compose accepts subject `oncall` with password `oncall-local`.
+The image includes `examples/logs/checkout-api/api.log`. That file is the only system a checkout case can search. A person must sign in first. Local compose accepts username `oncall` with password `oncall-local`.
 
 1. Sign in as `oncall`. On the console, choose **Use the checkout sample**. That only fills the form.
 2. Choose **Open case**. The case is stored in Postgres.
