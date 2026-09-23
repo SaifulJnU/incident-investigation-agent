@@ -124,11 +124,13 @@ When tool plugins land, the company will set `CONNECTORS` to the systems it uses
 | --- | --- | --- |
 | Sign in | No | Stores a bearer token for later requests |
 | Use the checkout sample | No | Fills the form in the browser |
-| Open case | No | Creates the case |
+| Open case | No | Creates the case and stores the engineer's name |
 | Add a note | No | Stores a fact on the case |
 | Investigate | Yes, on the worker | Queues a run. The worker calls the model and tools |
-| Mark mitigated | No | Changes status |
-| Mark resolved | No | Changes status and blocks another investigation |
+| Mark mitigated | No | Records who stopped the immediate harm |
+| Mark resolved | No | Records who closed the case and blocks another investigation |
+
+Above the case list, **All**, **Open**, **Investigating**, **Mitigated**, and **Resolved** filter that list. The choice stays in the page address.
 
 ## Stop the local stack
 

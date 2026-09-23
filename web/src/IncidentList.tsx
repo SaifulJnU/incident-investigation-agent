@@ -1,6 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { createIncident, listIncidents, type Incident, type Severity } from "./api";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  createIncident,
+  incidentCounts,
+  listIncidents,
+  type CaseStatus,
+  type Incident,
+  type Severity,
+} from "./api";
 import { elapsed, formatWhen, SEVERITY_LABEL, STATUS_LABEL } from "./format";
 
 const SAMPLE = {
@@ -12,9 +19,25 @@ const SAMPLE = {
   started_at: "2026-09-22T14:02:00Z",
 };
 
+const FILTERS: Array<CaseStatus | "all"> = ["all", "open", "investigating", "mitigated", "resolved"];
+
+function selectedStatus(value: string | null): CaseStatus | "all" {
+  if (value && FILTERS.includes(value as CaseStatus | "all") && value !== "all") {
+    return value as CaseStatus;
+  }
+  return "all";
+}
+
+function who(name: string, subject: string): string {
+  return name || subject;
+}
+
 export function IncidentList() {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const filter = selectedStatus(params.get("status"));
   const [cases, setCases] = useState<Incident[]>([]);
+  const [counts, setCounts] = useState<Record<CaseStatus | "all", number> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -26,10 +49,12 @@ export function IncidentList() {
 
   useEffect(() => {
     let gone = false;
-    listIncidents()
-      .then((rows) => {
+    setLoading(true);
+    Promise.all([listIncidents(filter === "all" ? undefined : filter), incidentCounts()])
+      .then(([rows, totals]) => {
         if (!gone) {
           setCases(rows);
+          setCounts(totals);
         }
       })
       .catch((err: unknown) => {
@@ -45,7 +70,17 @@ export function IncidentList() {
     return () => {
       gone = true;
     };
-  }, []);
+  }, [filter]);
+
+  function chooseFilter(next: CaseStatus | "all") {
+    const updated = new URLSearchParams(params);
+    if (next === "all") {
+      updated.delete("status");
+    } else {
+      updated.set("status", next);
+    }
+    setParams(updated);
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -73,6 +108,11 @@ export function IncidentList() {
     setSeverity(SAMPLE.severity);
     setStartedAt(SAMPLE.started_at);
   }
+
+  const empty =
+    filter === "all"
+      ? "No cases yet. Open one from the form, or start from the checkout sample."
+      : `No ${STATUS_LABEL[filter].toLowerCase()} cases.`;
 
   return (
     <main className="desk">
@@ -122,10 +162,23 @@ export function IncidentList() {
       </section>
       <section>
         <h2>Cases</h2>
+        <div className="filters" role="tablist" aria-label="Case status">
+          {FILTERS.map((item) => (
+            <button
+              key={item}
+              type="button"
+              role="tab"
+              aria-selected={filter === item}
+              className={filter === item ? "filter selected" : "filter"}
+              onClick={() => chooseFilter(item)}
+            >
+              {item === "all" ? "All" : STATUS_LABEL[item]}
+              {counts ? <span className="count">{counts[item]}</span> : null}
+            </button>
+          ))}
+        </div>
         {loading ? <p className="quiet">Loading cases.</p> : null}
-        {!loading && cases.length === 0 ? (
-          <p className="quiet">No cases yet. Open one from the form, or start from the checkout sample.</p>
-        ) : null}
+        {!loading && cases.length === 0 ? <p className="quiet">{empty}</p> : null}
         <ul className="case-list">
           {cases.map((item) => (
             <li key={item.id}>
@@ -145,6 +198,12 @@ export function IncidentList() {
                   {formatWhen(item.started_at)}
                   <span className="gap" />
                   {elapsed(item.started_at)}
+                  {who(item.opened_by_name, item.opened_by) ? (
+                    <>
+                      <span className="gap" />
+                      {who(item.opened_by_name, item.opened_by)}
+                    </>
+                  ) : null}
                 </span>
               </Link>
             </li>
@@ -154,3 +213,4 @@ export function IncidentList() {
     </main>
   );
 }
+

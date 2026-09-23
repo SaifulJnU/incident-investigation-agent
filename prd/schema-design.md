@@ -2,7 +2,7 @@
 
 Product: Case file  
 Database: PostgreSQL 16  
-Schema revision: `0002_actors`  
+Schema revision: `0003_case_actors`  
 Status: implemented
 
 This document is the contract for the case record. The console, API, and worker all read and write these tables. External systems (logs, CloudWatch, Datadog, GitHub) are not copied into this database. A tool returns a result, and the case keeps only the short fact that was recorded.
@@ -80,6 +80,13 @@ The case a person opens and later closes.
 | `created_at` | `timestamptz` | no | When the row was inserted |
 | `updated_at` | `timestamptz` | no | When the case, its evidence, or its status last changed |
 | `opened_by` | `varchar(200)` | no | Subject of the person who opened the case. Empty on rows created before sign-in existed |
+| `opened_by_name` | `varchar(200)` | no | Display name from the sign-in token |
+| `mitigated_by` | `varchar(200)` | no | Subject of the person who last marked the case mitigated |
+| `mitigated_by_name` | `varchar(200)` | no | Display name of that person |
+| `mitigated_at` | `timestamptz` | yes | When the case was last marked mitigated |
+| `resolved_by` | `varchar(200)` | no | Subject of the person who last marked the case resolved |
+| `resolved_by_name` | `varchar(200)` | no | Display name of that person |
+| `resolved_at` | `timestamptz` | yes | When the case was last marked resolved |
 
 Checks: `ck_incident_severity`, `ck_incident_status`.
 
@@ -271,4 +278,4 @@ Company A and Company B run the same images. Each has its own PostgreSQL databas
 
 ## 6. Revision
 
-`alembic/versions/0001_case_file.py` creates the three tables, the four check constraints, the foreign keys, and the indexes in section 2. `0002_actors` adds `incidents.opened_by` and `investigation_runs.requested_by`. The API image runs `alembic upgrade head` before it serves traffic. The worker waits until `investigation_runs` can be selected.
+`alembic/versions/0001_case_file.py` creates the three tables, the four check constraints, the foreign keys, and the indexes in section 2. `0002_actors` adds `incidents.opened_by` and `investigation_runs.requested_by`. `0003_case_actors` adds the display names, who mitigated or resolved the case, and an index on `incidents.status` for the case list filter. The API image runs `alembic upgrade head` before it serves traffic. The worker waits until `investigation_runs` can be selected.

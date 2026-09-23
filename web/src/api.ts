@@ -14,6 +14,13 @@ export interface Incident {
   created_at: string;
   updated_at: string;
   opened_by: string;
+  opened_by_name: string;
+  mitigated_by: string;
+  mitigated_by_name: string;
+  mitigated_at: string | null;
+  resolved_by: string;
+  resolved_by_name: string;
+  resolved_at: string | null;
 }
 
 export interface Evidence {
@@ -35,6 +42,7 @@ export interface Run {
   started_at: string | null;
   finished_at: string | null;
   requested_by: string;
+  requested_by_name: string;
 }
 
 export interface IncidentDetail extends Incident {
@@ -99,8 +107,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function listIncidents(): Promise<Incident[]> {
-  return request("/api/incidents");
+export function listIncidents(status?: CaseStatus): Promise<Incident[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return request(`/api/incidents${query}`);
+}
+
+export function incidentCounts(): Promise<Record<CaseStatus | "all", number>> {
+  return request("/api/incidents/counts");
 }
 
 export function getIncident(id: string): Promise<IncidentDetail> {

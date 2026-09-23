@@ -37,6 +37,7 @@ class Incident(Base):
             "status IN ('open', 'investigating', 'mitigated', 'resolved')",
             name="ck_incident_status",
         ),
+        Index("ix_incidents_status", "status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -49,6 +50,13 @@ class Incident(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     opened_by: Mapped[str] = mapped_column(String(200), default="")
+    opened_by_name: Mapped[str] = mapped_column(String(200), default="")
+    mitigated_by: Mapped[str] = mapped_column(String(200), default="")
+    mitigated_by_name: Mapped[str] = mapped_column(String(200), default="")
+    mitigated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[str] = mapped_column(String(200), default="")
+    resolved_by_name: Mapped[str] = mapped_column(String(200), default="")
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class EvidenceItem(Base):
@@ -98,6 +106,7 @@ class InvestigationRun(Base):
     provider: Mapped[str] = mapped_column(String(32), default="")
     model_name: Mapped[str] = mapped_column(String(512), default="")
     requested_by: Mapped[str] = mapped_column(String(200), default="")
+    requested_by_name: Mapped[str] = mapped_column(String(200), default="")
     report: Mapped[str | None] = mapped_column(Text(), nullable=True)
     error: Mapped[str | None] = mapped_column(Text(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

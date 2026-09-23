@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from incident_investigation_agent.db.models import EvidenceItem, Incident, InvestigationRun, utcnow
@@ -45,13 +45,36 @@ class DbCaseStore:
             return [_evidence(row) for row in rows]
 
 
-def list_incidents(session: Session, services: frozenset[str] | None = None) -> list[Incident]:
+CASE_STATUSES = ("open", "investigating", "mitigated", "resolved")
+
+
+def list_incidents(
+    session: Session,
+    services: frozenset[str] | None = None,
+    status: str | None = None,
+) -> list[Incident]:
     statement = select(Incident).order_by(Incident.started_at.desc())
     if services is not None:
         if not services:
             return []
         statement = statement.where(Incident.service.in_(services))
+    if status is not None:
+        statement = statement.where(Incident.status == status)
     return list(session.scalars(statement).all())
+
+
+def incident_counts(session: Session, services: frozenset[str] | None = None) -> dict[str, int]:
+    counts = {name: 0 for name in CASE_STATUSES}
+    if services is not None and not services:
+        counts["all"] = 0
+        return counts
+    statement = select(Incident.status, func.count()).group_by(Incident.status)
+    if services is not None:
+        statement = statement.where(Incident.service.in_(services))
+    for status, count in session.execute(statement):
+        counts[str(status)] = int(count)
+    counts["all"] = sum(counts[name] for name in CASE_STATUSES)
+    return counts
 
 
 def get_incident(session: Session, incident_id: uuid.UUID) -> Incident | None:
@@ -98,6 +121,7 @@ def open_incident(
     severity: str,
     started_at: datetime,
     opened_by: str = "",
+    opened_by_name: str = "",
 ) -> Incident:
     incident = Incident(
         title=title,
@@ -109,6 +133,7 @@ def open_incident(
         created_at=utcnow(),
         updated_at=utcnow(),
         opened_by=opened_by,
+        opened_by_name=opened_by_name,
     )
     session.add(incident)
     session.flush()
@@ -142,6 +167,7 @@ def queue_run(
     provider: str,
     model_name: str,
     requested_by: str = "",
+    requested_by_name: str = "",
 ) -> InvestigationRun:
     run = InvestigationRun(
         incident_id=incident.id,
@@ -149,6 +175,7 @@ def queue_run(
         provider=provider,
         model_name=model_name,
         requested_by=requested_by,
+        requested_by_name=requested_by_name,
         created_at=utcnow(),
     )
     session.add(run)

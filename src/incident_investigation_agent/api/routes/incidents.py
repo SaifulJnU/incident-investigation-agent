@@ -17,6 +17,7 @@ from incident_investigation_agent.api.schemas import (
     IncidentOut,
     IncidentPatch,
     RunOut,
+    Status,
 )
 from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.db.models import utcnow
@@ -26,6 +27,7 @@ from incident_investigation_agent.repositories.cases import (
     add_evidence,
     evidence_for,
     get_incident,
+    incident_counts,
     list_incidents,
     open_incident,
     queue_run,
@@ -37,10 +39,19 @@ router = APIRouter()
 
 @router.get("/api/incidents", response_model=list[IncidentOut])
 def incidents(
+    status: Status | None = None,
     session: Session = Depends(get_db),
     principal: Principal = Depends(get_principal),
 ) -> list:
-    return list_incidents(session, principal.list_scope())
+    return list_incidents(session, principal.list_scope(), status=status)
+
+
+@router.get("/api/incidents/counts")
+def counts(
+    session: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> dict[str, int]:
+    return incident_counts(session, principal.list_scope())
 
 
 @router.post("/api/incidents", response_model=IncidentOut, status_code=201)
@@ -62,6 +73,7 @@ def create_incident(
         severity=body.severity,
         started_at=started,
         opened_by=principal.subject,
+        opened_by_name=principal.name,
     )
 
 
@@ -84,6 +96,14 @@ def update_incident(
     incident = _require(session, incident_id, principal)
     if body.status is not None:
         incident.status = body.status
+        if body.status == "mitigated":
+            incident.mitigated_by = principal.subject
+            incident.mitigated_by_name = principal.name
+            incident.mitigated_at = utcnow()
+        elif body.status == "resolved":
+            incident.resolved_by = principal.subject
+            incident.resolved_by_name = principal.name
+            incident.resolved_at = utcnow()
     if body.severity is not None:
         incident.severity = body.severity
     if body.summary is not None:
@@ -148,6 +168,7 @@ def investigate(
             provider=settings.model_provider,
             model_name=model_name,
             requested_by=principal.subject,
+            requested_by_name=principal.name,
         )
     except IntegrityError:
         session.rollback()
@@ -170,6 +191,13 @@ def _detail(session: Session, incident):
         "created_at": incident.created_at,
         "updated_at": incident.updated_at,
         "opened_by": incident.opened_by,
+        "opened_by_name": incident.opened_by_name,
+        "mitigated_by": incident.mitigated_by,
+        "mitigated_by_name": incident.mitigated_by_name,
+        "mitigated_at": incident.mitigated_at,
+        "resolved_by": incident.resolved_by,
+        "resolved_by_name": incident.resolved_by_name,
+        "resolved_at": incident.resolved_at,
         "evidence": [
             {
                 "id": item.id,
@@ -192,6 +220,7 @@ def _detail(session: Session, incident):
                 "started_at": run.started_at,
                 "finished_at": run.finished_at,
                 "requested_by": run.requested_by,
+                "requested_by_name": run.requested_by_name,
             }
             for run in runs_for(session, incident.id)
         ],

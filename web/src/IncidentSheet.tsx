@@ -12,6 +12,10 @@ import {
 } from "./api";
 import { elapsed, formatWhen, SEVERITY_LABEL, STATUS_LABEL } from "./format";
 
+function who(name: string, subject: string): string {
+  return name || subject;
+}
+
 const NOTE_KINDS: { value: EvidenceKind; label: string }[] = [
   { value: "symptom", label: "Symptom" },
   { value: "log", label: "Log line" },
@@ -156,10 +160,22 @@ export function IncidentSheet() {
         Started {formatWhen(detail.started_at)}
         <span className="gap" />
         {elapsed(detail.started_at, now)}
-        {detail.opened_by ? (
+        {who(detail.opened_by_name, detail.opened_by) ? (
           <>
             <span className="gap" />
-            Opened by {detail.opened_by}
+            Opened by {who(detail.opened_by_name, detail.opened_by)}
+          </>
+        ) : null}
+        {detail.mitigated_by_name || detail.mitigated_by ? (
+          <>
+            <span className="gap" />
+            Mitigated by {who(detail.mitigated_by_name, detail.mitigated_by)}
+          </>
+        ) : null}
+        {detail.resolved_by_name || detail.resolved_by ? (
+          <>
+            <span className="gap" />
+            Resolved by {who(detail.resolved_by_name, detail.resolved_by)}
           </>
         ) : null}
       </p>

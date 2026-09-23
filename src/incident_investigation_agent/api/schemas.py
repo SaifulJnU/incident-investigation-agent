@@ -80,6 +80,7 @@ class RunOut(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     requested_by: str
+    requested_by_name: str
 
 
 class IncidentOut(BaseModel):
@@ -95,6 +96,13 @@ class IncidentOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     opened_by: str
+    opened_by_name: str
+    mitigated_by: str
+    mitigated_by_name: str
+    mitigated_at: datetime | None
+    resolved_by: str
+    resolved_by_name: str
+    resolved_at: datetime | None
 
 
 class IncidentDetail(IncidentOut):

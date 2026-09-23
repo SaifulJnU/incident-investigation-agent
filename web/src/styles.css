@@ -170,6 +170,33 @@ button:disabled {
   color: var(--ink);
 }
 
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.2rem 0 0.4rem;
+}
+
+.filter {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--rule);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.filter.selected {
+  background: var(--ink);
+  color: var(--sheet);
+  border-color: var(--ink);
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
 .case-list {
   list-style: none;
   margin: 0.5rem 0 0;

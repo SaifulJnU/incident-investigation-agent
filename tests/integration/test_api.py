@@ -78,6 +78,7 @@ def test_open_case_add_note_and_queue(client):
     )
     assert created.status_code == 201
     assert created.json()["opened_by"] == "oncall"
+    assert created.json()["opened_by_name"] == "On-call engineer"
     incident_id = created.json()["id"]
 
     noted = client.post(
@@ -92,6 +93,7 @@ def test_open_case_add_note_and_queue(client):
     assert queued.status_code == 202
     assert queued.json()["status"] == "queued"
     assert queued.json()["requested_by"] == "oncall"
+    assert queued.json()["requested_by_name"] == "On-call engineer"
 
     again = client.post(f"/api/incidents/{incident_id}/investigate", headers=headers)
     assert again.status_code == 409
@@ -164,8 +166,16 @@ def test_mark_mitigated(client):
     )
     assert patched.status_code == 200
     assert patched.json()["status"] == "mitigated"
+    assert patched.json()["mitigated_by_name"] == "On-call engineer"
     listed = client.get("/api/incidents", headers=headers)
     assert listed.json()[0]["status"] == "mitigated"
+    mitigated = client.get("/api/incidents?status=mitigated", headers=headers)
+    assert len(mitigated.json()) == 1
+    resolved = client.get("/api/incidents?status=resolved", headers=headers)
+    assert resolved.json() == []
+    totals = client.get("/api/incidents/counts", headers=headers)
+    assert totals.json()["mitigated"] == 1
+    assert totals.json()["all"] == 1
 
 
 def test_dev_sign_in_rejects_a_wrong_password(client):
