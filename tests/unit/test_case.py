@@ -1,4 +1,4 @@
-from incident_investigation_agent.case import CaseStore
+from incident_investigation_agent.infrastructure.file_case import CaseStore
 
 
 def test_case_round_trip(tmp_path):

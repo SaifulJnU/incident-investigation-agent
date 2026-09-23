@@ -6,13 +6,11 @@ from pathlib import Path
 
 from strands import tool
 
-from incident_investigation_agent.case import CaseStore
-from incident_investigation_agent.logs import search_logs as search_log_files
-
-EVIDENCE_KINDS = {"symptom", "log", "timeline", "change", "hypothesis"}
+from incident_investigation_agent.domain.evidence import EVIDENCE_KINDS, EvidenceStore
+from incident_investigation_agent.infrastructure.logs import search_logs as search_log_files
 
 
-def build_tools(store: CaseStore, log_dir: Path):
+def build_tools(store: EvidenceStore, log_dir: Path):
     @tool
     def record_evidence(kind: str, summary: str, source: str = "operator") -> str:
         """Record a fact gathered during the investigation.

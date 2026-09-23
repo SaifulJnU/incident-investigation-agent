@@ -4,11 +4,11 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from incident_investigation_agent.config import Settings
-from incident_investigation_agent.records import open_incident, queue_run
-from incident_investigation_agent.report import message_text
-from incident_investigation_agent.schema import Base, EvidenceItem, Incident, InvestigationRun, utcnow
-from incident_investigation_agent.worker import execute
+from incident_investigation_agent.core.config import Settings
+from incident_investigation_agent.db.models import Base, EvidenceItem, Incident, InvestigationRun, utcnow
+from incident_investigation_agent.repositories.cases import open_incident, queue_run
+from incident_investigation_agent.services.investigation import execute
+from incident_investigation_agent.services.report import message_text
 
 
 def test_message_text_reads_strands_blocks():
