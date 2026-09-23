@@ -8,6 +8,8 @@ services:
       POSTGRES_USER: investigator
       POSTGRES_PASSWORD: investigator
       POSTGRES_DB: investigations
+    ports:
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

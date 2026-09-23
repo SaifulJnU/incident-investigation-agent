@@ -129,6 +129,8 @@ The case-file tools `record_evidence` and `list_evidence` stay on for every comp
 
 ## Data the case stores
 
+Column types, keys, the partial unique index, and the use cases that write each relation are specified in [schema design](schema-design.md). Summary:
+
 ```text
 incidents
   id, title, summary, service, severity, status, started_at
