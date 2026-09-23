@@ -39,14 +39,15 @@ This is the slice that runs.
 - A person may open and read cases only for services on their token. `incident-admin` may open every service.
 - API and a worker. Investigate returns immediately and the worker runs the agent.
 - Postgres stores cases, evidence, and investigation runs, including who opened the case and who requested the run.
-- Strands agent with exactly three tools: `search_logs`, `record_evidence`, `list_evidence`.
-- `search_logs` reads only `LOG_DIR/<service>`. In Docker the checkout sample is `examples/logs/checkout-api`.
+- Strands agent with `record_evidence`, `list_evidence`, and the connectors selected by `APP_ENV`.
+- `APP_ENV=local` enables `search_logs`, which reads only `LOG_DIR/<service>`. In Docker the checkout sample is `examples/logs/checkout-api`.
+- `APP_ENV=prod` enables CloudWatch, Datadog, Loki, and GitHub. `CONNECTORS` can name a shorter list.
 - Model plug with two options: Ollama (local compose) and Amazon Bedrock (when `MODEL_PROVIDER=bedrock` and AWS credentials exist).
 - CLI that investigates a prompt and writes `.case/case.json`, separate from the console database.
 
 ## 5. What a company will plug in
 
-Not built yet. The requirements below are the contract so the current three tools can grow into a set.
+Built for logs and GitHub commits. Slack and PagerDuty intake are still later. The contract below is what each plugin does.
 
 A tool plugin:
 
@@ -97,10 +98,10 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 | --- | --- | --- |
 | Local logs | Search text files in a configured directory | Built |
 | Case file | Record and list evidence on the case | Built |
-| CloudWatch Logs | Search a log group by time and filter | Planned |
-| Datadog | Search logs, and later a metric query | Planned |
-| Grafana or Loki | Search logs with that company's query language | Planned |
-| GitHub | List commits and deploys for the service in the incident window | Planned |
+| CloudWatch Logs | Search a log group by time and filter | Built. `APP_ENV=prod` |
+| Datadog | Search logs. A metric query is later | Built for logs. `APP_ENV=prod` |
+| Grafana or Loki | Search logs for the service label | Built. `APP_ENV=prod` |
+| GitHub | List commits for the service in the lookback window | Built. `APP_ENV=prod` |
 | Slack | Post nothing in v1. Later, open a case from a channel | Planned |
 | PagerDuty | Open a case from an incident | Planned |
 
@@ -116,7 +117,7 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 
 - A company keeps case data in its own Postgres. There is no shared multi-tenant service in this repository.
 - Secrets (Datadog keys, GitHub tokens, AWS keys) come from the environment or the platform's secret store. They are not written into the case.
-- Local Docker must not inherit a host `MODEL_PROVIDER=bedrock` by accident. The compose file sets Ollama.
+- Local Docker must not inherit a host `MODEL_PROVIDER=bedrock` or `APP_ENV=prod` by accident. The compose file sets Ollama and `APP_ENV=local`.
 - The compose database password is for the local stack only. Production replaces `DATABASE_URL`.
 - An investigation that cannot authenticate to a plugin fails that run with the underlying error. It does not invent a cause.
 - The console works in a current desktop browser and on a narrow laptop width.
@@ -143,6 +144,5 @@ Item 4 is not reliable on `llama3.1` today. The model sometimes describes the to
 
 ## 10. Open decisions
 
-- Whether CloudWatch or Datadog is the first external plugin. Pick the system the first pilot company already pays for.
-- How a company maps a service name on the case to a log group, a Datadog service tag, or a GitHub repository. That mapping is configuration, not a hard-coded name.
+- How a company maps a service name is configuration: `CLOUDWATCH_LOG_GROUP_PREFIX`, `CLOUDWATCH_LOG_GROUPS`, `DATADOG_SERVICE_TAG`, `LOKI_LABEL`, `GITHUB_ORG`, and `GITHUB_REPOS`.
 - How long a run may stay in `running` before the worker marks it failed.

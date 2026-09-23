@@ -13,8 +13,8 @@ browser (case file)
   API  ---- Postgres: cases, evidence, investigation runs
         |
         v
-  worker ---- Strands agent ---- local logs today
-        |                         CloudWatch, Grafana, Datadog, GitHub later
+  worker ---- Strands agent ---- APP_ENV=local: log folder
+        |                         APP_ENV=prod: CloudWatch, Datadog, Loki, GitHub
         +-- production: Amazon Bedrock
         +-- local:      any Ollama model
 ```
@@ -36,12 +36,12 @@ Running now:
 - Cases, evidence, and investigation runs in Postgres
 - A worker that runs the Strands agent without holding the HTTP request
 - Bedrock in production, any pulled Ollama model locally
-- Local log search (`examples/logs` in the image)
+- Local log search when `APP_ENV=local` (`examples/logs` in the image)
+- Production log sources when `APP_ENV=prod`: CloudWatch, Datadog, Loki, and GitHub
 - The case-file console: open a case, timeline, hypotheses, incident note
 
 Still to build:
 
-- Read-only connectors for CloudWatch, Grafana or Prometheus, Datadog, and GitHub deploys
 - Hypothesis confidence and a ruled-out state
 - A full audit log of every status change
 - Slack and PagerDuty intake
@@ -60,7 +60,7 @@ src/incident_investigation_agent/
   services/          agent, investigation run, incident note
   repositories/      Postgres reads and writes
   db/                engine, sessions, table definitions
-  infrastructure/    Bedrock or Ollama, local logs, on-disk case file
+  infrastructure/    Bedrock or Ollama, log connectors, on-disk case file
   api/               FastAPI routes, request bodies, session dependency
   core/              settings and process logging
   cli.py             investigate command
@@ -80,9 +80,7 @@ docker compose up --build
 
 Open http://localhost:8080. The API is on port 8000. Local compose signs you in with a username and password, not the company identity provider. Use username `oncall` and password `oncall-local` for checkout and payments, or `platform` and `platform-local` for every service. Then use "Use the checkout sample", open the case, and Investigate. The sample log for that service is `examples/logs/checkout-api/api.log`. An investigation only searches the directory for the case's service.
 
-Production sets `AUTH_MODE=oidc` with `OIDC_ISSUER`, `OIDC_AUDIENCE`, and `OIDC_CLIENT_ID`. The access token must be a signed JWT. A `services` claim lists the services that person may open. The role `incident-admin` may open every service. Do not set `DEV_AUTH_SECRET` in production.
-
-## Setup
+Production sets `APP_ENV=prod`, `AUTH_MODE=oidc`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, and `OIDC_CLIENT_ID`. The access token must be a signed JWT. A `services` claim lists the services that person may open. The role `incident-admin` may open every service. Do not set `DEV_AUTH_SECRET` in production.
 
 ## Setup
 
@@ -133,6 +131,34 @@ MODEL_PROVIDER=bedrock
 BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-4-6
 AWS_REGION=us-west-2
 ```
+
+### Where logs come from
+
+`APP_ENV=local` searches `LOG_DIR/<service>`. Docker Compose sets this. A checkout case reads `examples/logs/checkout-api`.
+
+`APP_ENV=prod` searches CloudWatch, Datadog, Loki, and GitHub. Each tool is read-only and limited to the case's service. Replace the values below. If the company does not use one of them, delete that block and set `CONNECTORS` to the ones it does use, for example `CONNECTORS=cloudwatch,github`.
+
+```
+APP_ENV=prod
+AWS_REGION=us-west-2
+CLOUDWATCH_LOG_GROUP_PREFIX=/aws/ecs/
+CLOUDWATCH_LOOKBACK_MINUTES=60
+DATADOG_SITE=datadoghq.com
+DATADOG_API_KEY=replace-me
+DATADOG_APP_KEY=replace-me
+DATADOG_SERVICE_TAG=service
+DATADOG_LOOKBACK_MINUTES=60
+LOKI_URL=https://loki.example.com
+LOKI_TOKEN=replace-me
+LOKI_LABEL=service
+LOKI_LOOKBACK_MINUTES=60
+GITHUB_API_URL=https://api.github.com
+GITHUB_TOKEN=replace-me
+GITHUB_ORG=replace-me
+GITHUB_LOOKBACK_HOURS=24
+```
+
+CloudWatch uses the worker's AWS credentials (the same chain as Bedrock) and needs `logs:FilterLogEvents`. A case for `checkout-api` reads the log group `CLOUDWATCH_LOG_GROUP_PREFIX` plus `checkout-api`. Set `CLOUDWATCH_LOG_GROUPS=checkout-api=/aws/lambda/checkout` when one service does not follow that prefix. GitHub reads `GITHUB_ORG/checkout-api` unless `GITHUB_REPOS` names the repository. A missing value is reported on that tool and the case stays open. The console does not change.
 
 ## Run
 

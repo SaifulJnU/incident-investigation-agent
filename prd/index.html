@@ -287,7 +287,7 @@
           <rect x="720" y="230" width="164" height="150" fill="none" stroke="#1d4e89" />
           <text x="802" y="258" text-anchor="middle">Tool plugs</text>
           <text x="802" y="282" text-anchor="middle" font-size="13">Local logs, built</text>
-          <text x="802" y="304" text-anchor="middle" fill="#5c6b80" font-size="13">CloudWatch, later</text>
+          <text x="802" y="304" text-anchor="middle" fill="#5c6b80" font-size="13">CloudWatch when prod</text>
           <text x="802" y="324" text-anchor="middle" fill="#5c6b80" font-size="13">Datadog, later</text>
           <text x="802" y="344" text-anchor="middle" fill="#5c6b80" font-size="13">GitHub, later</text>
         </g>
@@ -323,12 +323,12 @@
           <tr>
             <td>Logs</td>
             <td class="now">Folder of text files</td>
-            <td class="later">CloudWatch, Datadog, or Loki, when that plugin exists</td>
+            <td class="now">CloudWatch, Datadog, and Loki when APP_ENV=prod</td>
           </tr>
           <tr>
             <td>Deploys</td>
             <td>Not connected</td>
-            <td class="later">GitHub, when that plugin exists</td>
+            <td class="now">GitHub commits when APP_ENV=prod</td>
           </tr>
           <tr>
             <td>Open a case</td>
@@ -345,9 +345,9 @@
 
       <h2>Where this slice stops</h2>
       <p>
-        Built: the case, the console, Postgres, the worker, Ollama, Bedrock, sign-in, service grants, and a log-folder
-        tool. Not built: CloudWatch, Datadog, GitHub, and an approval step before any
-        write to those systems. The agent is read-only toward company systems on purpose.
+        Built: the case, the console, Postgres, the worker, Ollama, Bedrock, sign-in, service grants, the log folder,
+        and read-only CloudWatch, Datadog, Loki, and GitHub search when APP_ENV=prod. Not built: Slack, PagerDuty,
+        and an approval step before any write to those systems. The agent is read-only toward company systems on purpose.
       </p>
 
       <h2 id="docs">Full documents</h2>

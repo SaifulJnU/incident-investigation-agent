@@ -11,7 +11,7 @@ Case file is for a company that already has incidents and already has some recor
 - A person decides mitigation and resolution.
 - Local run with Ollama and a log directory.
 - Production run with Bedrock, or with Ollama if that is the company's choice.
-- More tools later, each optional: CloudWatch, Datadog, Grafana or Loki, GitHub, then Slack and PagerDuty as ways to open a case.
+- Log and deploy tools, each optional: CloudWatch, Datadog, Grafana Loki, and GitHub, selected with `APP_ENV=prod` or a shorter `CONNECTORS` list. Slack and PagerDuty as ways to open a case are still later.
 
 ## Out of scope
 

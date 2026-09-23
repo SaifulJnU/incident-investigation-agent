@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.db.models import Incident, InvestigationRun, utcnow
 from incident_investigation_agent.db.session import database_ready
-from incident_investigation_agent.infrastructure.logs import scoped_log_dir
 from incident_investigation_agent.repositories.cases import DbCaseStore
 from incident_investigation_agent.services.agent import build_agent
 from incident_investigation_agent.services.report import IncidentBrief, investigation_prompt, message_text
@@ -97,11 +96,7 @@ def run_once(factory: sessionmaker[Session], settings: Settings, investigate=Non
 
 
 def _investigate_with_agent(settings: Settings, store: DbCaseStore, prompt: str, service: str) -> str:
-    agent = build_agent(
-        settings,
-        store=store,
-        log_dir=scoped_log_dir(settings.log_dir, service),
-    )
+    agent = build_agent(settings, store=store, service=service)
     return message_text(agent(prompt))
 
 

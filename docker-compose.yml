@@ -31,6 +31,9 @@ services:
       BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-global.anthropic.claude-sonnet-4-6}
       AWS_REGION: ${AWS_REGION:-us-west-2}
       LOG_DIR: /app/examples/logs
+      # Local compose reads the sample log folder. Production sets APP_ENV=prod.
+      APP_ENV: local
+      CONNECTORS: local_logs
       LOG_LEVEL: INFO
       # Local sign-in only. Production sets AUTH_MODE=oidc and does not set DEV_AUTH_SECRET.
       AUTH_MODE: dev

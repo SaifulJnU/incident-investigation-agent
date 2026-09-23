@@ -15,7 +15,7 @@ flowchart LR
 
 The person never talks to CloudWatch or GitHub directly through this product. They talk to the case. The worker talks to company systems only through enabled tool plugins.
 
-Today the only company system behind a tool is a directory of log files.
+`APP_ENV=local` puts a directory of log files behind the tools. `APP_ENV=prod` puts CloudWatch, Datadog, Loki, and GitHub behind them. Slack and PagerDuty are not connected.
 
 ## Containers
 
@@ -47,7 +47,7 @@ flowchart TB
 | Postgres | Cases, evidence, runs. Also the job queue, using a row status and `FOR UPDATE SKIP LOCKED` |
 | Strands agent | Loop: send the case, run a tool the model asked for, send the tool result back |
 | Model plugin | Ollama or Bedrock |
-| Tool plugins | Today: local log search, record evidence, list evidence |
+| Tool plugins | Case file, plus `APP_ENV=local` log folder or `APP_ENV=prod` CloudWatch, Datadog, Loki, and GitHub |
 
 ## What happens when someone clicks Investigate
 
@@ -69,7 +69,7 @@ sequenceDiagram
   end
   Worker->>DB: claim oldest queued run
   Worker->>Model: case text plus tool list
-  Model->>Logs: search_logs or a future plugin
+  Model->>Logs: enabled connector for this APP_ENV
   Logs-->>Model: text result
   Model-->>Worker: incident note
   Worker->>DB: save note, status=completed
@@ -109,12 +109,14 @@ src/incident_investigation_agent/
   services/agent.py              builds the Strands agent
   infrastructure/llm.py          chooses ollama or bedrock
   infrastructure/tools.py        case-file tools, always on
-  infrastructure/logs.py         local log search, built
+  infrastructure/logs.py         local log search
   infrastructure/connectors/
-    cloudwatch.py                planned
-    datadog.py                   planned
-    github.py                    planned
-    registry.py                  reads CONNECTORS and returns the tool list
+    local_logs.py                APP_ENV=local
+    cloudwatch.py                APP_ENV=prod
+    datadog.py                   APP_ENV=prod
+    loki.py                      APP_ENV=prod
+    github.py                    APP_ENV=prod
+    registry.py                  reads APP_ENV and CONNECTORS
 ```
 
 A connector module exposes a function:
@@ -123,7 +125,7 @@ A connector module exposes a function:
 tools_for(settings) -> list of Strands tools
 ```
 
-`CONNECTORS=local_logs,github` turns those modules on. An unknown name fails at startup with the list of known names. A connector whose secret is missing fails the run with that missing setting, and the case stays usable.
+`APP_ENV=local` enables `local_logs`. `APP_ENV=prod` enables `cloudwatch`, `datadog`, `loki`, and `github`. `CONNECTORS=cloudwatch,github` replaces that default. An unknown name fails at startup with the list of known names. A connector whose setting is missing returns that missing name from the tool, and the case stays usable.
 
 The case-file tools `record_evidence` and `list_evidence` stay on for every company. They write to this product's database, not to the company's other systems.
 

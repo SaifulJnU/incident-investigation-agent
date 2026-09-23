@@ -26,7 +26,7 @@ Local compose is not the company identity provider. It accepts two development a
 | `oncall` | `oncall-local` | `checkout-api`, `payments-api` |
 | `platform` | `platform-local` | every service |
 
-A person signed in as `oncall` cannot open or read a case for another service. Investigate searches only `LOG_DIR/<service>`.
+A person signed in as `oncall` cannot open or read a case for another service. With `APP_ENV=local`, Investigate searches only `LOG_DIR/<service>`. With `APP_ENV=prod`, it searches that service in CloudWatch, Datadog, Loki, and GitHub.
 
 The API listens on http://localhost:8000. The compose file sets `MODEL_PROVIDER=ollama` itself, so a Bedrock setting in your shell does not leak into this stack. Ollama must be running on the host. The worker reaches it at `http://host.docker.internal:11434`.
 
@@ -103,20 +103,30 @@ DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/investigations
 MODEL_PROVIDER=bedrock
 BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-4-6
 AWS_REGION=us-west-2
+APP_ENV=prod
 LOG_DIR=/var/case-file/logs
+CLOUDWATCH_LOG_GROUP_PREFIX=/aws/ecs/
+DATADOG_SITE=datadoghq.com
+DATADOG_API_KEY=replace-me
+DATADOG_APP_KEY=replace-me
+LOKI_URL=https://loki.example.com
+LOKI_TOKEN=replace-me
+GITHUB_API_URL=https://api.github.com
+GITHUB_TOKEN=replace-me
+GITHUB_ORG=replace-me
 AUTH_MODE=oidc
 OIDC_ISSUER=https://login.example.com
 OIDC_AUDIENCE=case-file
 OIDC_CLIENT_ID=case-file
 ```
 
-`AUTH_MODE=dev` and `DEV_AUTH_SECRET` are for the laptop compose file only. Production leaves them unset. The identity provider must issue a signed JWT access token whose `aud` is `OIDC_AUDIENCE`. A `services` claim lists the service names that person may open. A `roles` claim of `incident-admin` may open every service. Put each service's logs in its own directory under `LOG_DIR`.
+`AUTH_MODE=dev` and `DEV_AUTH_SECRET` are for the laptop compose file only. Production leaves them unset. The identity provider must issue a signed JWT access token whose `aud` is `OIDC_AUDIENCE`. A `services` claim lists the service names that person may open. A `roles` claim of `incident-admin` may open every service.
+
+`APP_ENV=local` searches `LOG_DIR/<service>`. `APP_ENV=prod` searches CloudWatch, Datadog, Loki, and GitHub with the values above. Set `CONNECTORS` to a shorter list when the company does not use every system, for example `CONNECTORS=cloudwatch,github`. A case for `checkout-api` reads log group `CLOUDWATCH_LOG_GROUP_PREFIX` + `checkout-api`, Datadog tag `service:checkout-api`, Loki label `{service="checkout-api"}`, and GitHub repository `GITHUB_ORG/checkout-api`. Override one service with `CLOUDWATCH_LOG_GROUPS` or `GITHUB_REPOS` (`checkout-api=acme/checkout`). The worker role needs `logs:FilterLogEvents` for CloudWatch. Do not put AWS keys in the environment file when the task role already has them.
 
 Give the worker AWS credentials with permission to invoke that Bedrock model. Enable the model in the Bedrock console. The API container runs `alembic upgrade head` before it serves traffic. Run one worker process. Put the web container behind HTTPS. Proxy `/api` to the API the way `deploy/nginx.conf` does.
 
 To keep a local model in production, leave `MODEL_PROVIDER=ollama` and point `OLLAMA_HOST` at an Ollama server the worker can reach. That is a valid company choice. Bedrock is the supported cloud model, not a requirement of the case record.
-
-When tool plugins land, the company will set `CONNECTORS` to the systems it uses, for example `local_logs,github` or `cloudwatch,github`. Until those plugins exist, the only search tool is the log directory in `LOG_DIR`.
 
 ## What each control does
 

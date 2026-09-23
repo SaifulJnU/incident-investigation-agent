@@ -1,16 +1,15 @@
-"""Tools the agent uses to record a case and search local logs."""
+"""Case-file tools, plus the connectors selected by APP_ENV."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from strands import tool
 
+from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.domain.evidence import EVIDENCE_KINDS, EvidenceStore
-from incident_investigation_agent.infrastructure.logs import search_logs as search_log_files
+from incident_investigation_agent.infrastructure.connectors.registry import connector_tools
 
 
-def build_tools(store: EvidenceStore, log_dir: Path):
+def build_tools(store: EvidenceStore, settings: Settings, service: str | None = None):
     @tool
     def record_evidence(kind: str, summary: str, source: str = "operator") -> str:
         """Record a fact gathered during the investigation.
@@ -41,14 +40,4 @@ def build_tools(store: EvidenceStore, log_dir: Path):
         ]
         return "\n".join(lines)
 
-    @tool
-    def search_logs(query: str, limit: int = 20) -> str:
-        """Search text logs for a case-insensitive substring.
-
-        Args:
-            query: Text to find in the configured log directory
-            limit: Maximum matching lines to return
-        """
-        return search_log_files(log_dir, query, limit)
-
-    return [record_evidence, list_evidence, search_logs]
+    return [record_evidence, list_evidence, *connector_tools(settings, service)]
