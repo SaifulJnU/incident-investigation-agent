@@ -23,6 +23,7 @@ class Settings:
     aws_region: str
     log_dir: Path
     case_dir: Path
+    database_url: str
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -42,4 +43,8 @@ class Settings:
             aws_region=_env("AWS_REGION", "us-west-2"),
             log_dir=Path(_env("LOG_DIR", "examples/logs")),
             case_dir=Path(_env("CASE_DIR", ".case")),
+            database_url=_env(
+                "DATABASE_URL",
+                "postgresql+psycopg://investigator:investigator@localhost:5432/investigations",
+            ),
         )

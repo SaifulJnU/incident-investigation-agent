@@ -1,0 +1,15 @@
+* text=auto
+
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.conf text eol=lf
+Dockerfile text eol=lf
+*.Dockerfile text eol=lf
+deploy/api.Dockerfile text eol=lf
+deploy/web.Dockerfile text eol=lf
+deploy/nginx.conf text eol=lf

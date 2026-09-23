@@ -1,0 +1,75 @@
+# Local production shape. The database password is for this compose file only.
+# In production, set DATABASE_URL from a secret and point MODEL_PROVIDER at bedrock.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: investigator
+      POSTGRES_PASSWORD: investigator
+      POSTGRES_DB: investigations
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U investigator -d investigations"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+    environment: &app-env
+      DATABASE_URL: postgresql+psycopg://investigator:investigator@postgres:5432/investigations
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-ollama}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-global.anthropic.claude-sonnet-4-6}
+      AWS_REGION: ${AWS_REGION:-us-west-2}
+      LOG_DIR: /app/examples/logs
+      LOG_LEVEL: INFO
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 25s
+
+  worker:
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+    command: ["python", "-m", "incident_investigation_agent.worker"]
+    environment: *app-env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:

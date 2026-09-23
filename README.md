@@ -4,20 +4,22 @@ A Python incident investigation agent built with the [Strands Agents SDK](https:
 
 ## Plan
 
-The agent takes an incident brief, searches the logs you point it at, and writes a case file as it works. Model choice is configuration. Tools and the investigation prompt do not change between environments.
+An investigation is a case file, not a chat transcript. That is how Resolve, Cleric, Traversal, and incident.io present the work: a timeline, the evidence behind it, hypotheses, and a note a person can act on. The agent is read-only. It searches and records. A person marks the mitigation.
 
 ```
-brief or symptom
+browser (case file)
         |
         v
-  Strands Agent  ---- tools: record_evidence, list_evidence, search_logs
-        |
-        +-- production: Amazon Bedrock (IAM or standard AWS credentials)
-        +-- local:      Ollama at localhost, any pulled model
+  API  ---- Postgres: cases, evidence, investigation runs
         |
         v
-  incident note + .case/case.json
+  worker ---- Strands agent ---- local logs today
+        |                         CloudWatch, Grafana, Datadog, GitHub later
+        +-- production: Amazon Bedrock
+        +-- local:      any Ollama model
 ```
+
+The console is the case. The CLI still writes a local `.case/case.json` when you want a single run without Docker.
 
 Investigation order baked into the system prompt:
 
@@ -28,36 +30,52 @@ Investigation order baked into the system prompt:
 5. Recommend the next checks and the safest immediate mitigation.
 6. Close with impact, leading cause, confidence, and open questions.
 
-What is scaffolded now:
+Running now:
 
-- Provider switch (`MODEL_PROVIDER=bedrock` or `ollama`)
-- Bedrock model id and region from the environment
-- Ollama host and model id from the environment, so any model you have pulled can be used
-- A case file under `.case/`
-- Log search over a local directory (`examples/logs` by default)
-- A sample checkout incident and a matching log
+- Docker Compose: Postgres, API, worker, and the web console
+- Cases, evidence, and investigation runs in Postgres
+- A worker that runs the Strands agent without holding the HTTP request
+- Bedrock in production, any pulled Ollama model locally
+- Local log search (`examples/logs` in the image)
+- The case-file console: open a case, timeline, hypotheses, incident note
 
-What comes next, as separate adapters behind the same tools:
+Still to build:
 
-- CloudWatch Logs, metrics, and traces
-- Deploy and change history
-- Ticket or paging intake
+- Read-only connectors for CloudWatch, Grafana or Prometheus, Datadog, and GitHub deploys
+- Hypothesis confidence and a ruled-out state
+- OIDC, roles, and an audit log
+- Slack and PagerDuty intake
+- Postmortem export
+- An approval gate before any remediation write
+- Request metrics and a time limit on a run
+- CI that publishes the images
 
 ## Layout
 
 ```
 src/incident_investigation_agent/
-  config.py     environment settings
+  api/          FastAPI case file
+  worker.py     queued investigations
+  schema.py     Postgres tables
+  records.py    case reads and writes
   models.py     BedrockModel or OllamaModel
-  agent.py      Strands Agent
-  tools.py      case notes and log search tools
-  logs.py       local log search
-  prompts.py    investigation instructions
-  case.py       .case/case.json
-  __main__.py   CLI
+  agent.py      Strands agent
+web/            case-file console
+deploy/         API image, web image, nginx
 examples/       sample brief and logs
-tests/          settings and case file
 ```
+
+## Console
+
+Docker Desktop is enough. The API image runs migrations on startup. Ollama on the host is reached at `host.docker.internal:11434`. Set `MODEL_PROVIDER=bedrock` in the shell before `docker compose up` when you want Bedrock instead. The database password in `docker-compose.yml` is for this local stack only.
+
+```bash
+docker compose up --build
+```
+
+Open http://localhost:8080. The API is on port 8000. Use "Use the checkout sample", open the case, then Investigate. The sample log is inside the image at `examples/logs`.
+
+## Setup
 
 ## Setup
 

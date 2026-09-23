@@ -10,3 +10,5 @@ dist/
 build/
 .env
 .case/
+web/node_modules/
+web/dist/
