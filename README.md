@@ -52,17 +52,22 @@ Still to build:
 
 ## Layout
 
+The Python package is split the way a German production service usually is: the case rules do not import FastAPI or SQLAlchemy, HTTP only calls the repository, and the model and log files sit behind adapters.
+
 ```
 src/incident_investigation_agent/
-  api/          FastAPI case file
-  worker.py     queued investigations
-  schema.py     Postgres tables
-  records.py    case reads and writes
-  models.py     BedrockModel or OllamaModel
-  agent.py      Strands agent
-web/            case-file console
-deploy/         API image, web image, nginx
-examples/       sample brief and logs
+  domain/            evidence and the store port
+  services/          agent, investigation run, incident note
+  repositories/      Postgres reads and writes
+  db/                engine, sessions, table definitions
+  infrastructure/    Bedrock or Ollama, local logs, on-disk case file
+  api/               FastAPI routes, request bodies, session dependency
+  core/              settings and process logging
+  cli.py             investigate command
+  worker.py          process that claims queued runs
+web/                 case-file console
+deploy/              API image, web image, nginx
+examples/            sample brief and logs
 ```
 
 ## Console

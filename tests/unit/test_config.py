@@ -1,6 +1,6 @@
 import pytest
 
-from incident_investigation_agent.config import Settings
+from incident_investigation_agent.core.config import Settings
 
 
 def test_defaults_to_bedrock(monkeypatch):

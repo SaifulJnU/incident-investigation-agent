@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from incident_investigation_agent.api.app import create_app
-from incident_investigation_agent.schema import Base
+from incident_investigation_agent.db.models import Base
 
 
 @pytest.fixture

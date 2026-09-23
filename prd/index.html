@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Case file, product requirements</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,650&family=Schibsted+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --steel: #d5dde8;
+        --sheet: #f4f7f8;
+        --ink: #172033;
+        --muted: #5c6b80;
+        --rule: #b7c3d1;
+        --sev: #b42318;
+        --watch: #8a5a00;
+        --clear: #1d6b45;
+        --focus: #1d4e89;
+        color-scheme: light;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        background: var(--steel);
+        color: var(--ink);
+        font-family: "Schibsted Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+        line-height: 1.5;
+      }
+
+      a { color: var(--focus); text-underline-offset: 0.18em; }
+      :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+
+      .page {
+        max-width: 68rem;
+        margin: 0 auto;
+        padding: 1.5rem 1.25rem 4rem;
+      }
+
+      header.top {
+        display: flex;
+        justify-content: space-between;
+        gap: 1.5rem;
+        align-items: baseline;
+        border-bottom: 1px solid var(--rule);
+        padding-bottom: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .mark {
+        font-family: "Literata", Georgia, serif;
+        font-size: 1.35rem;
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .quiet { color: var(--muted); }
+
+      h1, h2, .note p, .log {
+        font-family: "Literata", Georgia, serif;
+        font-weight: 400;
+      }
+
+      h1 {
+        font-size: 2.4rem;
+        line-height: 1.15;
+        max-width: 18ch;
+        margin: 0 0 0.6rem;
+      }
+
+      h2 {
+        font-family: "Schibsted Grotesk", sans-serif;
+        font-weight: 600;
+        font-size: 1.05rem;
+        margin: 2.2rem 0 0.7rem;
+      }
+
+      p { max-width: 68ch; }
+
+      nav ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem 1.1rem;
+        list-style: none;
+        padding: 0;
+        margin: 1rem 0 0;
+      }
+
+      .sheet {
+        background: var(--sheet);
+        border: 1px solid var(--rule);
+        padding: 1.25rem 1.3rem 1.4rem;
+        margin-top: 1rem;
+      }
+
+      .case-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+
+      .service { margin: 0.2rem 0 0; font-size: 1.15rem; }
+
+      .lamp {
+        width: 0.7rem;
+        height: 0.7rem;
+        border-radius: 50%;
+        background: var(--sev);
+        display: inline-block;
+        margin-right: 0.4rem;
+      }
+
+      .log {
+        white-space: pre-wrap;
+        background: transparent;
+        border-left: 1px solid var(--ink);
+        margin: 0.6rem 0 0;
+        padding: 0.2rem 0 0.2rem 1rem;
+        font-size: 1.02rem;
+        line-height: 1.55;
+      }
+
+      .found { background: #efe2c2; }
+
+      ol.steps {
+        list-style: none;
+        margin: 0.4rem 0 0;
+        padding: 0 0 0 1.15rem;
+        border-left: 1px solid var(--ink);
+        max-width: 68ch;
+      }
+
+      ol.steps li {
+        position: relative;
+        margin: 0 0 1rem;
+      }
+
+      ol.steps li::before {
+        content: "";
+        position: absolute;
+        width: 0.5rem;
+        height: 0.5rem;
+        left: -1.45rem;
+        top: 0.45rem;
+        background: var(--sheet);
+        border: 1px solid var(--ink);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0.4rem;
+      }
+
+      th, td {
+        text-align: left;
+        vertical-align: top;
+        padding: 0.55rem 0.6rem 0.55rem 0;
+        border-bottom: 1px solid var(--rule);
+      }
+
+      th { font-weight: 600; }
+
+      .now { color: var(--clear); }
+      .later { color: var(--watch); }
+
+      .diagram {
+        width: 100%;
+        height: auto;
+        margin-top: 0.6rem;
+        background: var(--sheet);
+        border: 1px solid var(--rule);
+      }
+
+      .docs a { display: inline-block; margin-right: 1rem; }
+
+      @media (max-width: 700px) {
+        h1 { font-size: 1.9rem; }
+        header.top, .case-head { display: block; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="top">
+        <a class="mark" href="#top">Case file</a>
+        <p class="quiet">Product requirements for an investigation record any company can run.</p>
+      </header>
+
+      <h1 id="top">One case record. Their model. Their tools.</h1>
+      <p>
+        Case file keeps an incident the same way for every company: what broke, the timeline,
+        the evidence, and a note. The reasoning model and the systems it may search are plugs.
+        A shop with a folder of logs and Ollama uses the same product as a shop with Bedrock,
+        CloudWatch, and GitHub.
+      </p>
+      <nav>
+        <ul>
+          <li><a href="#example">Worked example</a></li>
+          <li><a href="#click">What Investigate does</a></li>
+          <li><a href="#design">System</a></li>
+          <li><a href="#plugs">Plugs</a></li>
+          <li><a href="#docs">Full documents</a></li>
+        </ul>
+      </nav>
+
+      <h2 id="example">Worked example, Harbor and Co.</h2>
+      <p>
+        Harbor and Co. is a stand-in for any company. Their checkout API starts failing after a
+        payments deploy. Nothing in this example calls Datadog or AWS. The log file shipped in
+        this repository is the whole outside world.
+      </p>
+      <article class="sheet">
+        <div class="case-head">
+          <div>
+            <h2 style="margin-top: 0">Checkout errors after the payments deploy</h2>
+            <p class="service">checkout-api</p>
+          </div>
+          <p><span class="lamp" aria-hidden="true"></span>Sev-1, open</p>
+        </div>
+        <p>
+          Started 22 Sep 14:02 UTC. HTTP 500s on POST /checkout climbed after payments-api 1.42.0.
+          Catalog still looks healthy. No database failover was announced.
+        </p>
+        <p class="quiet">The on-call engineer typed that. They did not type the cause.</p>
+        <p>The only tool that can search today reads <code>examples/logs/api.log</code>:</p>
+        <pre class="log">2026-09-22T14:02:11Z payments-api INFO deploy version=1.42.0
+2026-09-22T14:02:40Z checkout-api ERROR upstream payments-api status=500 body="<mark class="found">card vault timeout</mark>"
+2026-09-22T14:03:02Z payments-api ERROR vault connection timed out host=vault.internal:8443</pre>
+        <p>
+          Those lines are not in the title. When a completed note mentions a card vault timeout,
+          the model got that phrase from this file through <code>search_logs</code>.
+        </p>
+      </article>
+
+      <h2 id="click">What happens after Investigate</h2>
+      <ol class="steps">
+        <li>The console asks the API to queue a run. The page does not wait on the model.</li>
+        <li>The worker picks up the run and sends the whole case: title, service, severity, start time, and what happened.</li>
+        <li>Strands calls Ollama <code>llama3.1</code> locally, or Bedrock if that plug is selected.</li>
+        <li>The model may call <code>search_logs</code>. That function reads the log directory and returns matching lines.</li>
+        <li>The model may call <code>record_evidence</code>. That writes a timeline row, a hypothesis, or a log line onto the case.</li>
+        <li>The worker stores the model’s final text as the incident note and the page shows it.</li>
+      </ol>
+      <p>
+        On the local llama3.1 run, step 4 happened and step 5 often does not. The model writes a
+        sentence about calling <code>record_evidence</code> instead of calling it, so the timeline
+        stays empty. The note can still be true. The timeline is empty because the tool did not run.
+      </p>
+
+      <h2 id="design">How the pieces sit</h2>
+      <p>
+        The browser never calls the model. The API never calls the model. Only the worker does,
+        and only through the plugs that are switched on.
+      </p>
+      <svg class="diagram" viewBox="0 0 920 420" role="img" aria-label="Browser to API and worker, then a model plug and a tool plug">
+        <rect width="920" height="420" fill="#f4f7f8" />
+        <g font-family="Schibsted Grotesk, Avenir Next, sans-serif" font-size="15" fill="#172033">
+          <rect x="36" y="36" width="150" height="64" fill="none" stroke="#172033" />
+          <text x="111" y="74" text-anchor="middle">Browser</text>
+
+          <rect x="250" y="36" width="170" height="64" fill="none" stroke="#172033" />
+          <text x="335" y="64" text-anchor="middle">Console and API</text>
+          <text x="335" y="84" text-anchor="middle" fill="#5c6b80" font-size="13">cases and status</text>
+
+          <rect x="250" y="250" width="170" height="72" fill="none" stroke="#172033" />
+          <text x="335" y="282" text-anchor="middle">Postgres</text>
+          <text x="335" y="302" text-anchor="middle" fill="#5c6b80" font-size="13">case, evidence, runs</text>
+
+          <rect x="490" y="150" width="160" height="72" fill="none" stroke="#172033" />
+          <text x="570" y="182" text-anchor="middle">Worker</text>
+          <text x="570" y="202" text-anchor="middle" fill="#5c6b80" font-size="13">Strands agent</text>
+
+          <rect x="720" y="40" width="164" height="110" fill="none" stroke="#1d4e89" />
+          <text x="802" y="68" text-anchor="middle">Model plug</text>
+          <text x="802" y="92" text-anchor="middle" font-size="13">Ollama, built</text>
+          <text x="802" y="112" text-anchor="middle" font-size="13">Bedrock, built</text>
+          <text x="802" y="132" text-anchor="middle" fill="#5c6b80" font-size="13">others, later</text>
+
+          <rect x="720" y="230" width="164" height="150" fill="none" stroke="#1d4e89" />
+          <text x="802" y="258" text-anchor="middle">Tool plugs</text>
+          <text x="802" y="282" text-anchor="middle" font-size="13">Local logs, built</text>
+          <text x="802" y="304" text-anchor="middle" fill="#5c6b80" font-size="13">CloudWatch, later</text>
+          <text x="802" y="324" text-anchor="middle" fill="#5c6b80" font-size="13">Datadog, later</text>
+          <text x="802" y="344" text-anchor="middle" fill="#5c6b80" font-size="13">GitHub, later</text>
+        </g>
+        <g fill="none" stroke="#172033" stroke-width="1.4">
+          <path d="M186 68 H250" />
+          <path d="M335 100 V250" />
+          <path d="M420 286 H490" />
+          <path d="M570 150 V76 H720" />
+          <path d="M650 186 H720" />
+          <path d="M650 200 H700 V305 H720" />
+        </g>
+      </svg>
+
+      <h2 id="plugs">What a company turns on</h2>
+      <p>
+        Two companies install the same images. Each sets environment variables. Neither sees the
+        other’s cases, because each has its own Postgres.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Plug</th>
+            <th>Harbor and Co., local</th>
+            <th>A production company</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Model</td>
+            <td class="now">Ollama llama3.1 on the laptop</td>
+            <td>Bedrock, or their own Ollama server</td>
+          </tr>
+          <tr>
+            <td>Logs</td>
+            <td class="now">Folder of text files</td>
+            <td class="later">CloudWatch, Datadog, or Loki, when that plugin exists</td>
+          </tr>
+          <tr>
+            <td>Deploys</td>
+            <td>Not connected</td>
+            <td class="later">GitHub, when that plugin exists</td>
+          </tr>
+          <tr>
+            <td>Open a case</td>
+            <td class="now">A person, in the console</td>
+            <td class="later">Still a person. Slack or PagerDuty can be added later</td>
+          </tr>
+          <tr>
+            <td>Close a case</td>
+            <td class="now">A person marks mitigated, then resolved</td>
+            <td>The same. The agent does not close it</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Where this slice stops</h2>
+      <p>
+        Built: the case, the console, Postgres, the worker, Ollama, Bedrock, and a log-folder
+        tool. Not built: CloudWatch, Datadog, GitHub, login, and an approval step before any
+        write to those systems. The agent is read-only toward company systems on purpose.
+      </p>
+
+      <h2 id="docs">Full documents</h2>
+      <p class="docs">
+        <a href="product-requirements.md">Product requirements</a>
+        <a href="system-design.md">System design</a>
+        <a href="user-manual.md">User manual</a>
+        <a href="scope-and-use-cases.md">Scope and use cases</a>
+      </p>
+      <p class="quiet">
+        Open this file in a browser. The manual covers <code>docker compose up --build</code>
+        for a laptop and the settings a company changes for production.
+      </p>
+    </div>
+  </body>
+</html>

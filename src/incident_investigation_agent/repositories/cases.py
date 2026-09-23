@@ -8,8 +8,8 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from incident_investigation_agent.case import Evidence
-from incident_investigation_agent.schema import EvidenceItem, Incident, InvestigationRun, utcnow
+from incident_investigation_agent.db.models import EvidenceItem, Incident, InvestigationRun, utcnow
+from incident_investigation_agent.domain.evidence import Evidence
 
 
 ACTIVE_RUN = ("queued", "running")

@@ -1,19 +1,13 @@
-"""A small on-disk case file the investigation tools read and write."""
+"""A small on-disk case file the CLI investigation tools read and write."""
 
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-
-@dataclass(frozen=True)
-class Evidence:
-    kind: str
-    summary: str
-    source: str
-    recorded_at: str
+from incident_investigation_agent.domain.evidence import Evidence
 
 
 class CaseStore:
