@@ -40,9 +40,9 @@ flowchart TB
 
 | Piece | Responsibility |
 | --- | --- |
-| Browser | Open a case, read the note, change status |
-| Web | Static console. Proxies `/api` to the API |
-| API | Cases, notes, status, queue an investigation. Does not call the model |
+| Browser | Sign in, open a case, read the note, change status |
+| Web | Static console. Proxies `/api` to the API. Sends the bearer token |
+| API | Checks the token and the service grant, then cases, notes, status, and queues an investigation. Does not call the model |
 | Worker | Claims a queued run, calls the agent, stores the note |
 | Postgres | Cases, evidence, runs. Also the job queue, using a row status and `FOR UPDATE SKIP LOCKED` |
 | Strands agent | Loop: send the case, run a tool the model asked for, send the tool result back |
@@ -61,7 +61,7 @@ sequenceDiagram
   participant Model as Ollama or Bedrock
   participant Logs as Enabled tools
   Person->>Console: Investigate
-  Console->>API: POST /api/incidents/{id}/investigate
+  Console->>API: POST /api/incidents/{id}/investigate with bearer token
   API->>DB: insert run status=queued
   API-->>Console: 202 Accepted
   loop every 2 seconds while queued or running
@@ -90,7 +90,7 @@ Evidence already recorded:
 Start by calling search_logs.
 ```
 
-`search_logs` then reads files under `LOG_DIR`. In the local stack that is `/app/examples/logs/api.log`.
+`search_logs` then reads files under `LOG_DIR/<service>`. In the local stack a checkout case reads `/app/examples/logs/checkout-api/api.log`. A case for another service cannot read that directory.
 
 ## Plugin shape
 

@@ -69,9 +69,16 @@ select {
   text-decoration: none;
 }
 
-.quiet {
-  color: var(--muted);
-  margin: 0.35rem 0 0;
+.who {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.sign-in {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 4rem;
 }
 
 .problem {

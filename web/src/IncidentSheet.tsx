@@ -156,6 +156,12 @@ export function IncidentSheet() {
         Started {formatWhen(detail.started_at)}
         <span className="gap" />
         {elapsed(detail.started_at, now)}
+        {detail.opened_by ? (
+          <>
+            <span className="gap" />
+            Opened by {detail.opened_by}
+          </>
+        ) : null}
       </p>
       <p className="summary">{detail.summary}</p>
       <div className="actions">

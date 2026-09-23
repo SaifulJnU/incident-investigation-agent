@@ -17,7 +17,16 @@ From the repository root:
 docker compose up --build
 ```
 
-Open http://localhost:8080.
+Open http://localhost:8080. Sign in before the case list loads.
+
+Local compose is not the company identity provider. It accepts two development accounts:
+
+| Subject | Password | May open |
+| --- | --- | --- |
+| `oncall` | `oncall-local` | `checkout-api`, `payments-api` |
+| `platform` | `platform-local` | every service |
+
+A person signed in as `oncall` cannot open or read a case for another service. Investigate searches only `LOG_DIR/<service>`.
 
 The API listens on http://localhost:8000. The compose file sets `MODEL_PROVIDER=ollama` itself, so a Bedrock setting in your shell does not leak into this stack. Ollama must be running on the host. The worker reaches it at `http://host.docker.internal:11434`.
 
@@ -31,9 +40,9 @@ Use another pulled model by starting compose with `OLLAMA_MODEL` set to that tag
 
 ### Walk through the sample
 
-The image includes `examples/logs/api.log`. That file is the only system the agent can search today.
+The image includes `examples/logs/checkout-api/api.log`. That file is the only system a checkout case can search. A person must sign in first. Local compose accepts subject `oncall` with password `oncall-local`.
 
-1. On the console, choose **Use the checkout sample**. That only fills the form.
+1. Sign in as `oncall`. On the console, choose **Use the checkout sample**. That only fills the form.
 2. Choose **Open case**. The case is stored in Postgres.
 3. Choose **Investigate**. The page polls until the run is completed or failed.
 4. Read the incident note. A useful run quotes something that is in `api.log` and was not in the form, such as `card vault timeout`.
@@ -95,7 +104,13 @@ MODEL_PROVIDER=bedrock
 BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-4-6
 AWS_REGION=us-west-2
 LOG_DIR=/var/case-file/logs
+AUTH_MODE=oidc
+OIDC_ISSUER=https://login.example.com
+OIDC_AUDIENCE=case-file
+OIDC_CLIENT_ID=case-file
 ```
+
+`AUTH_MODE=dev` and `DEV_AUTH_SECRET` are for the laptop compose file only. Production leaves them unset. The identity provider must issue a signed JWT access token whose `aud` is `OIDC_AUDIENCE`. A `services` claim lists the service names that person may open. A `roles` claim of `incident-admin` may open every service. Put each service's logs in its own directory under `LOG_DIR`.
 
 Give the worker AWS credentials with permission to invoke that Bedrock model. Enable the model in the Bedrock console. The API container runs `alembic upgrade head` before it serves traffic. Run one worker process. Put the web container behind HTTPS. Proxy `/api` to the API the way `deploy/nginx.conf` does.
 
@@ -107,6 +122,7 @@ When tool plugins land, the company will set `CONNECTORS` to the systems it uses
 
 | Control | Calls the model? | Effect |
 | --- | --- | --- |
+| Sign in | No | Stores a bearer token for later requests |
 | Use the checkout sample | No | Fills the form in the browser |
 | Open case | No | Creates the case |
 | Add a note | No | Stores a fact on the case |

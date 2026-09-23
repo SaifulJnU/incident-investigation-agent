@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from strands import Agent
 
 from incident_investigation_agent.core.config import Settings
@@ -12,11 +14,15 @@ from incident_investigation_agent.infrastructure.tools import build_tools
 from incident_investigation_agent.services.prompts import SYSTEM_PROMPT
 
 
-def build_agent(settings: Settings, store: EvidenceStore | None = None) -> Agent:
+def build_agent(
+    settings: Settings,
+    store: EvidenceStore | None = None,
+    log_dir: Path | None = None,
+) -> Agent:
     if store is None:
         store = CaseStore(settings.case_dir)
     return Agent(
         model=build_model(settings),
-        tools=build_tools(store, settings.log_dir),
+        tools=build_tools(store, log_dir or settings.log_dir),
         system_prompt=SYSTEM_PROMPT,
     )

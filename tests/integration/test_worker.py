@@ -41,7 +41,7 @@ def test_execute_stores_the_note_and_reopens_the_case():
         run_id = run.id
         session.commit()
 
-    def investigate(_settings, store, prompt):
+    def investigate(_settings, store, prompt, _service):
         assert "Checkout errors" in prompt
         store.add("hypothesis", "The card vault timed out.", "agent")
         return "Leading cause: vault timeout."
@@ -79,7 +79,7 @@ def test_execute_records_a_failure():
         run_id = run.id
         session.commit()
 
-    def investigate(_settings, _store, _prompt):
+    def investigate(_settings, _store, _prompt, _service):
         raise RuntimeError("ollama is not running")
 
     execute(factory, _settings(), run_id, investigate)

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from incident_investigation_agent.api.dependencies import get_db
+from incident_investigation_agent.api.dependencies import get_db, get_principal
 from incident_investigation_agent.api.schemas import (
     EvidenceCreate,
     IncidentCreate,
@@ -20,6 +20,7 @@ from incident_investigation_agent.api.schemas import (
 )
 from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.db.models import utcnow
+from incident_investigation_agent.domain.access import Principal
 from incident_investigation_agent.repositories.cases import (
     active_run,
     add_evidence,
@@ -35,12 +36,21 @@ router = APIRouter()
 
 
 @router.get("/api/incidents", response_model=list[IncidentOut])
-def incidents(session: Session = Depends(get_db)) -> list:
-    return list_incidents(session)
+def incidents(
+    session: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+) -> list:
+    return list_incidents(session, principal.list_scope())
 
 
 @router.post("/api/incidents", response_model=IncidentOut, status_code=201)
-def create_incident(body: IncidentCreate, session: Session = Depends(get_db)):
+def create_incident(
+    body: IncidentCreate,
+    session: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+):
+    if not principal.may_access(body.service):
+        raise HTTPException(status_code=403, detail="You cannot open a case for this service.")
     started = body.started_at or utcnow()
     if started.tzinfo is None:
         started = started.replace(tzinfo=timezone.utc)
@@ -51,12 +61,17 @@ def create_incident(body: IncidentCreate, session: Session = Depends(get_db)):
         service=body.service,
         severity=body.severity,
         started_at=started,
+        opened_by=principal.subject,
     )
 
 
 @router.get("/api/incidents/{incident_id}", response_model=IncidentDetail)
-def incident_detail(incident_id: uuid.UUID, session: Session = Depends(get_db)):
-    return _detail(session, _require(session, incident_id))
+def incident_detail(
+    incident_id: uuid.UUID,
+    session: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+):
+    return _detail(session, _require(session, incident_id, principal))
 
 
 @router.patch("/api/incidents/{incident_id}", response_model=IncidentOut)
@@ -64,8 +79,9 @@ def update_incident(
     incident_id: uuid.UUID,
     body: IncidentPatch,
     session: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
 ):
-    incident = _require(session, incident_id)
+    incident = _require(session, incident_id, principal)
     if body.status is not None:
         incident.status = body.status
     if body.severity is not None:
@@ -86,14 +102,15 @@ def create_evidence(
     incident_id: uuid.UUID,
     body: EvidenceCreate,
     session: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
 ):
-    incident = _require(session, incident_id)
+    incident = _require(session, incident_id, principal)
     add_evidence(
         session,
         incident.id,
         kind=body.kind,
         summary=body.summary,
-        source="operator",
+        source=principal.subject,
     )
     incident.updated_at = utcnow()
     session.flush()
@@ -105,8 +122,12 @@ def create_evidence(
     response_model=RunOut,
     status_code=202,
 )
-def investigate(incident_id: uuid.UUID, session: Session = Depends(get_db)):
-    incident = _require(session, incident_id)
+def investigate(
+    incident_id: uuid.UUID,
+    session: Session = Depends(get_db),
+    principal: Principal = Depends(get_principal),
+):
+    incident = _require(session, incident_id, principal)
     if incident.status == "resolved":
         raise HTTPException(status_code=409, detail="This case is resolved.")
     if active_run(session, incident.id) is not None:
@@ -126,6 +147,7 @@ def investigate(incident_id: uuid.UUID, session: Session = Depends(get_db)):
             incident,
             provider=settings.model_provider,
             model_name=model_name,
+            requested_by=principal.subject,
         )
     except IntegrityError:
         session.rollback()
@@ -147,6 +169,7 @@ def _detail(session: Session, incident):
         "started_at": incident.started_at,
         "created_at": incident.created_at,
         "updated_at": incident.updated_at,
+        "opened_by": incident.opened_by,
         "evidence": [
             {
                 "id": item.id,
@@ -168,14 +191,15 @@ def _detail(session: Session, incident):
                 "created_at": run.created_at,
                 "started_at": run.started_at,
                 "finished_at": run.finished_at,
+                "requested_by": run.requested_by,
             }
             for run in runs_for(session, incident.id)
         ],
     }
 
 
-def _require(session: Session, incident_id: uuid.UUID):
+def _require(session: Session, incident_id: uuid.UUID, principal: Principal):
     incident = get_incident(session, incident_id)
-    if incident is None:
+    if incident is None or not principal.may_access(incident.service):
         raise HTTPException(status_code=404, detail="Case not found.")
     return incident

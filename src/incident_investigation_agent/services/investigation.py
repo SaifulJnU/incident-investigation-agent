@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.db.models import Incident, InvestigationRun, utcnow
 from incident_investigation_agent.db.session import database_ready
+from incident_investigation_agent.infrastructure.logs import scoped_log_dir
 from incident_investigation_agent.repositories.cases import DbCaseStore
 from incident_investigation_agent.services.agent import build_agent
 from incident_investigation_agent.services.report import IncidentBrief, investigation_prompt, message_text
@@ -68,12 +69,13 @@ def execute(factory: sessionmaker[Session], settings: Settings, run_id, investig
             started_at=incident.started_at,
         )
         incident_id = incident.id
+        service_name = incident.service
         session.commit()
 
     store = DbCaseStore(factory, incident_id)
     prompt = investigation_prompt(brief, store.list())
     try:
-        report = investigate(settings, store, prompt)
+        report = investigate(settings, store, prompt, service_name)
     except Exception as exc:
         log.exception("investigation failed run=%s", run_id)
         _finish(factory, run_id, status="failed", error=str(exc)[:2000])
@@ -94,8 +96,12 @@ def run_once(factory: sessionmaker[Session], settings: Settings, investigate=Non
     return True
 
 
-def _investigate_with_agent(settings: Settings, store: DbCaseStore, prompt: str) -> str:
-    agent = build_agent(settings, store=store)
+def _investigate_with_agent(settings: Settings, store: DbCaseStore, prompt: str, service: str) -> str:
+    agent = build_agent(
+        settings,
+        store=store,
+        log_dir=scoped_log_dir(settings.log_dir, service),
+    )
     return message_text(agent(prompt))
 
 

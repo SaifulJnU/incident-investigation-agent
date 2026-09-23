@@ -22,6 +22,19 @@ _SKIP = {
     "get",
 }
 
+_SERVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,118}$")
+
+
+def scoped_log_dir(log_dir: Path, service: str) -> Path:
+    """Logs for one service. The search must not walk up into other services."""
+    if not _SERVICE_NAME.fullmatch(service):
+        raise ValueError(f"Invalid service name {service!r}.")
+    root = log_dir.resolve()
+    scoped = (root / service).resolve()
+    if root not in scoped.parents:
+        raise ValueError(f"Invalid service name {service!r}.")
+    return scoped
+
 
 def search_logs(log_dir: Path, query: str, limit: int = 20) -> str:
     needle = query.strip()

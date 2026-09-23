@@ -32,6 +32,10 @@ services:
       AWS_REGION: ${AWS_REGION:-us-west-2}
       LOG_DIR: /app/examples/logs
       LOG_LEVEL: INFO
+      # Local sign-in only. Production sets AUTH_MODE=oidc and does not set DEV_AUTH_SECRET.
+      AUTH_MODE: dev
+      DEV_AUTH_SECRET: local-dev-only-not-for-production-use
+      DEV_USERS: oncall|On-call engineer|checkout-api,payments-api|oncall-local;platform|Platform owner|*|platform-local
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

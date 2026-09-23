@@ -230,7 +230,7 @@
           Catalog still looks healthy. No database failover was announced.
         </p>
         <p class="quiet">The on-call engineer typed that. They did not type the cause.</p>
-        <p>The only tool that can search today reads <code>examples/logs/api.log</code>:</p>
+        <p>The only tool that can search today reads <code>examples/logs/checkout-api/api.log</code>:</p>
         <pre class="log">2026-09-22T14:02:11Z payments-api INFO deploy version=1.42.0
 2026-09-22T14:02:40Z checkout-api ERROR upstream payments-api status=500 body="<mark class="found">card vault timeout</mark>"
 2026-09-22T14:03:02Z payments-api ERROR vault connection timed out host=vault.internal:8443</pre>
@@ -345,8 +345,8 @@
 
       <h2>Where this slice stops</h2>
       <p>
-        Built: the case, the console, Postgres, the worker, Ollama, Bedrock, and a log-folder
-        tool. Not built: CloudWatch, Datadog, GitHub, login, and an approval step before any
+        Built: the case, the console, Postgres, the worker, Ollama, Bedrock, sign-in, service grants, and a log-folder
+        tool. Not built: CloudWatch, Datadog, GitHub, and an approval step before any
         write to those systems. The agent is read-only toward company systems on purpose.
       </p>
 

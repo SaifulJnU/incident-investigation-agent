@@ -45,10 +45,13 @@ class DbCaseStore:
             return [_evidence(row) for row in rows]
 
 
-def list_incidents(session: Session) -> list[Incident]:
-    return list(
-        session.scalars(select(Incident).order_by(Incident.started_at.desc())).all()
-    )
+def list_incidents(session: Session, services: frozenset[str] | None = None) -> list[Incident]:
+    statement = select(Incident).order_by(Incident.started_at.desc())
+    if services is not None:
+        if not services:
+            return []
+        statement = statement.where(Incident.service.in_(services))
+    return list(session.scalars(statement).all())
 
 
 def get_incident(session: Session, incident_id: uuid.UUID) -> Incident | None:
@@ -94,6 +97,7 @@ def open_incident(
     service: str,
     severity: str,
     started_at: datetime,
+    opened_by: str = "",
 ) -> Incident:
     incident = Incident(
         title=title,
@@ -104,6 +108,7 @@ def open_incident(
         started_at=started_at,
         created_at=utcnow(),
         updated_at=utcnow(),
+        opened_by=opened_by,
     )
     session.add(incident)
     session.flush()
@@ -136,12 +141,14 @@ def queue_run(
     *,
     provider: str,
     model_name: str,
+    requested_by: str = "",
 ) -> InvestigationRun:
     run = InvestigationRun(
         incident_id=incident.id,
         status="queued",
         provider=provider,
         model_name=model_name,
+        requested_by=requested_by,
         created_at=utcnow(),
     )
     session.add(run)

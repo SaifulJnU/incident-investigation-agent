@@ -2,7 +2,7 @@
 
 Product: Case file  
 Database: PostgreSQL 16  
-Schema revision: `0001_case_file`  
+Schema revision: `0002_actors`  
 Status: implemented
 
 This document is the contract for the case record. The console, API, and worker all read and write these tables. External systems (logs, CloudWatch, Datadog, GitHub) are not copied into this database. A tool returns a result, and the case keeps only the short fact that was recorded.
@@ -79,6 +79,7 @@ The case a person opens and later closes.
 | `started_at` | `timestamptz` | no | When the incident started, as stated by the person who opened it |
 | `created_at` | `timestamptz` | no | When the row was inserted |
 | `updated_at` | `timestamptz` | no | When the case, its evidence, or its status last changed |
+| `opened_by` | `varchar(200)` | no | Subject of the person who opened the case. Empty on rows created before sign-in existed |
 
 Checks: `ck_incident_severity`, `ck_incident_status`.
 
@@ -96,7 +97,7 @@ Facts kept on the case: symptoms, log lines, timeline entries, changes, and hypo
 | `incident_id` | `uuid` | no | Parent case |
 | `kind` | `varchar(20)` | no | `symptom`, `log`, `timeline`, `change`, or `hypothesis` |
 | `summary` | `text` | no | The fact, in one or two sentences |
-| `source` | `varchar(200)` | no | Who or what produced the fact. Console writes `operator`. The agent may name a tool or system |
+| `source` | `varchar(200)` | no | Who or what produced the fact. The console writes the signed-in subject. The agent may name a tool or system |
 | `recorded_at` | `timestamptz` | no | When this row was inserted |
 
 Check: `ck_evidence_kind`. Index: `ix_evidence_incident_id`.
@@ -116,6 +117,7 @@ One execution of Investigate. The same case may be investigated again after a pr
 | `status` | `varchar(20)` | no | `queued`, `running`, `completed`, or `failed` |
 | `provider` | `varchar(32)` | no | `ollama` or `bedrock`. Empty until the worker starts the run |
 | `model_name` | `varchar(512)` | no | Model id recorded when the run is queued, then confirmed when it starts |
+| `requested_by` | `varchar(200)` | no | Subject of the person who clicked Investigate |
 | `report` | `text` | yes | Incident note. Set only when `status` is `completed` |
 | `error` | `text` | yes | Failure text, truncated to 2000 characters. Set only when `status` is `failed` |
 | `created_at` | `timestamptz` | no | When the API queued the run |
@@ -185,7 +187,7 @@ Harbor and Co. checkout starts returning HTTP 500 after payments-api 1.42.0. The
 
 | Write | Value |
 | --- | --- |
-| `incidents` insert | `service` = `checkout-api`, `severity` = `sev1`, `status` = `open`, `started_at` = 14:02 UTC, `summary` = the symptom they typed |
+| `incidents` insert | `service` = `checkout-api`, `severity` = `sev1`, `status` = `open`, `started_at` = 14:02 UTC, `summary` = the symptom they typed, `opened_by` = the signed-in subject |
 | `evidence` | none yet |
 | `investigation_runs` | none yet |
 
@@ -197,7 +199,7 @@ Someone adds "database failover was not announced" before or during the investig
 
 | Write | Value |
 | --- | --- |
-| `evidence` insert | `incident_id` of the open case, `kind` = `change` or `timeline`, `source` = `operator`, `summary` = that statement |
+| `evidence` insert | `incident_id` of the open case, `kind` = `change` or `timeline`, `source` = the signed-in subject, `summary` = that statement |
 | `incidents.updated_at` | set to the insert time |
 
 The next run reads every evidence row for that `incident_id`, ordered by `recorded_at`, and includes them in the prompt. The agent must not contradict a recorded fact without saying so. That rule is in the prompt, not in a database constraint.
@@ -208,7 +210,7 @@ The engineer clicks Investigate. The HTTP request does not wait for the model.
 
 | Step | Write |
 | --- | --- |
-| API accepts | `investigation_runs` insert, `status` = `queued`, `incident_id` set. Response 202 |
+| API accepts | `investigation_runs` insert, `status` = `queued`, `incident_id` set, `requested_by` = the signed-in subject. Response 202 |
 | API rejects | no insert, when the case is `resolved` or `uq_incident_active_run` would be violated |
 | Worker claims | that row becomes `running`; if the incident is `open`, it becomes `investigating` |
 | Agent calls `record_evidence` | `evidence` insert on the same `incident_id`. `kind` is one of the five allowed values. `source` is whatever the model passed, default `operator` |
@@ -263,10 +265,10 @@ Company A and Company B run the same images. Each has its own PostgreSQL databas
 | --- | --- |
 | Log files, metrics, commits | Company systems, reached by tools. Not replicated here |
 | Model transcript and tool-call trace | Not persisted. Only `report` and evidence rows are kept |
-| Who is logged in, and an audit of patches | Not in revision `0001_case_file` |
+| A history of every status edit | Not stored. `opened_by` and `requested_by` record who opened the case and who clicked Investigate |
 | Approval before a write to GitHub, Kubernetes, or Datadog | Not in this schema. Those writes are out of product scope |
 | Multi-tenant company id | Out of scope. One deployment, one database |
 
 ## 6. Revision
 
-`alembic/versions/0001_case_file.py` creates the three tables, the four check constraints, the foreign keys, and the indexes in section 2. The API image runs `alembic upgrade head` before it serves traffic. The worker waits until `investigation_runs` can be selected.
+`alembic/versions/0001_case_file.py` creates the three tables, the four check constraints, the foreign keys, and the indexes in section 2. `0002_actors` adds `incidents.opened_by` and `investigation_runs.requested_by`. The API image runs `alembic upgrade head` before it serves traffic. The worker waits until `investigation_runs` can be selected.

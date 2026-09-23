@@ -28,17 +28,19 @@ Any company can run one Case file deployment for its own incidents.
 | On-call engineer | Opens a case, adds what they already know, clicks Investigate, reads the note, marks mitigated or resolved |
 | Incident lead | Reads the same case during the bridge and corrects the record |
 | Platform owner | Installs the stack, chooses the model, and enables tool plugins for that company |
-| Auditor, later | Reads who changed a case. Not built yet |
+| Auditor | Reads `opened_by` and `requested_by`. A full history of every status edit is not stored yet |
 
 ## 4. What exists today
 
 This is the slice that runs.
 
-- Web console at port 8080: open a case, list cases, add a note, investigate, mark mitigated, mark resolved.
+- Web console at port 8080: sign in, open a case, list cases, add a note, investigate, mark mitigated, mark resolved.
+- Sign-in. Production checks an OIDC access token. Local compose uses two development accounts.
+- A person may open and read cases only for services on their token. `incident-admin` may open every service.
 - API and a worker. Investigate returns immediately and the worker runs the agent.
-- Postgres stores cases, evidence, and investigation runs.
+- Postgres stores cases, evidence, and investigation runs, including who opened the case and who requested the run.
 - Strands agent with exactly three tools: `search_logs`, `record_evidence`, `list_evidence`.
-- `search_logs` reads text files in a directory. In Docker that directory is `examples/logs`.
+- `search_logs` reads only `LOG_DIR/<service>`. In Docker the checkout sample is `examples/logs/checkout-api`.
 - Model plug with two options: Ollama (local compose) and Amazon Bedrock (when `MODEL_PROVIDER=bedrock` and AWS credentials exist).
 - CLI that investigates a prompt and writes `.case/case.json`, separate from the console database.
 
@@ -68,7 +70,9 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 
 ### 6.1 Case
 
-- A person can open a case with a title, service, severity (`sev1` to `sev4`), start time, and a description of what happened.
+- A person must present a bearer token. Without one, case routes return 401.
+- A person can open a case with a title, service, severity (`sev1` to `sev4`), start time, and a description of what happened, when that service is in their grant.
+- Opening a case for another service returns 403. Reading another service's case returns 404.
 - A case has a status: open, investigating, mitigated, resolved.
 - Only a person moves a case to mitigated or resolved.
 - Investigate is refused when a run is already queued or running, and when the case is resolved.
@@ -123,7 +127,7 @@ A tester can:
 
 1. Open the console and create the sample checkout case without a cloud account.
 2. Click Investigate and see a completed run that used Ollama, not Bedrock.
-3. See a note that quotes a line present in `examples/logs/api.log` and absent from the title.
+3. See a note that quotes a line present in `examples/logs/checkout-api/api.log` and absent from the title.
 4. See that line also stored as evidence when the model calls `record_evidence`.
 5. Mark the case mitigated, then resolved, and see Investigate disabled.
 6. Point the same stack at Bedrock by changing the provider and supplying AWS credentials, without changing the console.

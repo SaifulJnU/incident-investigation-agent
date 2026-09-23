@@ -26,7 +26,7 @@ Case file is for a company that already has incidents and already has some recor
 
 Harbor and Co. runs a checkout API. At 14:02 UTC, payments-api 1.42.0 goes out. Checkout starts returning HTTP 500. The on-call engineer opens a case with the service, the time, and that summary. They click Investigate.
 
-With the built-in log plugin, the agent searches `api.log` and can find:
+With the built-in log plugin, the agent searches `examples/logs/checkout-api/api.log` and can find:
 
 ```text
 checkout-api ERROR upstream payments-api status=500 body="card vault timeout"

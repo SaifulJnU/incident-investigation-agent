@@ -48,6 +48,7 @@ class Incident(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    opened_by: Mapped[str] = mapped_column(String(200), default="")
 
 
 class EvidenceItem(Base):
@@ -96,6 +97,7 @@ class InvestigationRun(Base):
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
     provider: Mapped[str] = mapped_column(String(32), default="")
     model_name: Mapped[str] = mapped_column(String(512), default="")
+    requested_by: Mapped[str] = mapped_column(String(200), default="")
     report: Mapped[str | None] = mapped_column(Text(), nullable=True)
     error: Mapped[str | None] = mapped_column(Text(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

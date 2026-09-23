@@ -23,7 +23,7 @@ def _blank(value: str) -> str:
 
 class IncidentCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
-    service: str = Field(min_length=1, max_length=120)
+    service: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,118}$")
     summary: str = Field(min_length=1)
     severity: Severity
     started_at: datetime | None = None
@@ -79,6 +79,7 @@ class RunOut(BaseModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    requested_by: str
 
 
 class IncidentOut(BaseModel):
@@ -93,6 +94,7 @@ class IncidentOut(BaseModel):
     started_at: datetime
     created_at: datetime
     updated_at: datetime
+    opened_by: str
 
 
 class IncidentDetail(IncidentOut):

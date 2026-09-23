@@ -13,6 +13,7 @@ export interface Incident {
   started_at: string;
   created_at: string;
   updated_at: string;
+  opened_by: string;
 }
 
 export interface Evidence {
@@ -33,6 +34,7 @@ export interface Run {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  requested_by: string;
 }
 
 export interface IncidentDetail extends Incident {
@@ -48,14 +50,40 @@ export interface NewCase {
   started_at?: string;
 }
 
+const TOKEN_KEY = "case-file.token";
+
+let onUnauthorized: () => void = () => undefined;
+
+export function setUnauthorizedHandler(handler: () => void) {
+  onUnauthorized = handler;
+}
+
+export function readToken(): string | null {
+  return sessionStorage.getItem(TOKEN_KEY);
+}
+
+export function storeToken(token: string) {
+  sessionStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken() {
+  sessionStorage.removeItem(TOKEN_KEY);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = readToken();
   const response = await fetch(path, {
     ...init,
     headers: {
       "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   });
+  if (response.status === 401 && token) {
+    clearToken();
+    onUnauthorized();
+  }
   if (!response.ok) {
     let detail = response.statusText || "Request failed";
     try {
@@ -99,4 +127,35 @@ export function addNote(id: string, kind: EvidenceKind, summary: string): Promis
 
 export function investigate(id: string): Promise<Run> {
   return request(`/api/incidents/${id}/investigate`, { method: "POST" });
+}
+
+export interface AuthConfig {
+  mode: "dev" | "oidc";
+  issuer?: string;
+  client_id?: string;
+  audience?: string;
+  authorization_endpoint?: string;
+  token_endpoint?: string;
+}
+
+export interface Caller {
+  subject: string;
+  name: string;
+  services: string[];
+  allows_all: boolean;
+}
+
+export function authConfig(): Promise<AuthConfig> {
+  return request("/api/auth/config");
+}
+
+export function devSignIn(subject: string, password: string): Promise<{ access_token: string }> {
+  return request("/api/auth/dev/token", {
+    method: "POST",
+    body: JSON.stringify({ subject, password }),
+  });
+}
+
+export function currentCaller(): Promise<Caller> {
+  return request("/api/auth/me");
 }
