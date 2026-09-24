@@ -116,27 +116,29 @@ export function IncidentList() {
 
   return (
     <main className="desk">
-      <section>
+      <section className="panel intake-panel">
         <h1>Open a case</h1>
         <form onSubmit={onSubmit} className="intake">
           <label>
             Title
             <input value={title} onChange={(event) => setTitle(event.target.value)} required />
           </label>
-          <label>
-            Service
-            <input value={service} onChange={(event) => setService(event.target.value)} required />
-          </label>
-          <label>
-            Severity
-            <select value={severity} onChange={(event) => setSeverity(event.target.value as Severity)}>
-              {(Object.keys(SEVERITY_LABEL) as Severity[]).map((level) => (
-                <option key={level} value={level}>
-                  {SEVERITY_LABEL[level]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="field-row">
+            <label>
+              Service
+              <input value={service} onChange={(event) => setService(event.target.value)} required />
+            </label>
+            <label>
+              Severity
+              <select value={severity} onChange={(event) => setSeverity(event.target.value as Severity)}>
+                {(Object.keys(SEVERITY_LABEL) as Severity[]).map((level) => (
+                  <option key={level} value={level}>
+                    {SEVERITY_LABEL[level]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <label>
             Started (UTC)
             <input
@@ -158,56 +160,58 @@ export function IncidentList() {
             </button>
           </div>
         </form>
-        {error ? <p className="problem">{error}</p> : null}
+        {error ? (
+          <p className="problem" role="alert">
+            {error}
+          </p>
+        ) : null}
       </section>
-      <section>
-        <h2>Cases</h2>
-        <div className="filters" role="tablist" aria-label="Case status">
-          {FILTERS.map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="tab"
-              aria-selected={filter === item}
-              className={filter === item ? "filter selected" : "filter"}
-              onClick={() => chooseFilter(item)}
-            >
-              {item === "all" ? "All" : STATUS_LABEL[item]}
-              {counts ? <span className="count">{counts[item]}</span> : null}
-            </button>
-          ))}
+      <section className="panel" aria-busy={loading}>
+        <div className="board-head">
+          <h2>Cases</h2>
+          <div className="filters" role="group" aria-label="Case status">
+            {FILTERS.map((item) => (
+              <button
+                key={item}
+                type="button"
+                aria-pressed={filter === item}
+                className="filter"
+                onClick={() => chooseFilter(item)}
+              >
+                {item === "all" ? "All" : STATUS_LABEL[item]}
+                {counts ? <span className="count">{counts[item]}</span> : null}
+              </button>
+            ))}
+          </div>
         </div>
-        {loading ? <p className="quiet">Loading cases.</p> : null}
-        {!loading && cases.length === 0 ? <p className="quiet">{empty}</p> : null}
+        {loading ? <p className="quiet board-note">Loading cases.</p> : null}
+        {!loading && cases.length === 0 ? <p className="quiet board-note">{empty}</p> : null}
         <ul className="case-list">
-          {cases.map((item) => (
-            <li key={item.id}>
-              <Link to={`/incidents/${item.id}`} className="case-row">
-                <span
-                  className={`lamp ${item.severity} ${item.status === "open" || item.status === "investigating" ? "live" : ""}`}
-                  aria-hidden="true"
-                />
-                <span className="case-title">{item.title}</span>
-                <span className="case-meta">
-                  {SEVERITY_LABEL[item.severity]}
-                  <span className="gap" />
-                  {item.service}
-                  <span className="gap" />
-                  {STATUS_LABEL[item.status]}
-                  <span className="gap" />
-                  {formatWhen(item.started_at)}
-                  <span className="gap" />
-                  {elapsed(item.started_at)}
-                  {who(item.opened_by_name, item.opened_by) ? (
-                    <>
-                      <span className="gap" />
-                      {who(item.opened_by_name, item.opened_by)}
-                    </>
-                  ) : null}
-                </span>
-              </Link>
-            </li>
-          ))}
+          {cases.map((item) => {
+            const opener = who(item.opened_by_name, item.opened_by);
+            const live = item.status === "open" || item.status === "investigating";
+            return (
+              <li key={item.id}>
+                <Link to={`/incidents/${item.id}`} className="case-row">
+                  <span className={`rail ${item.severity} ${live ? "live" : ""}`} aria-hidden="true" />
+                  <span className="case-main">
+                    <span className="case-topline">
+                      <span className="case-title">{item.title}</span>
+                      <span className={`chip ${item.status}`}>{STATUS_LABEL[item.status]}</span>
+                    </span>
+                    <span className="case-meta">
+                      <span className={`chip ${item.severity}`}>{SEVERITY_LABEL[item.severity]}</span>
+                      <span className="meta-service">{item.service}</span>
+                      <span>{formatWhen(item.started_at)}</span>
+                      <span>{elapsed(item.started_at)}</span>
+                      {opener ? <span>{opener}</span> : null}
+                    </span>
+                    {item.summary ? <span className="case-summary">{item.summary}</span> : null}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       </section>
     </main>

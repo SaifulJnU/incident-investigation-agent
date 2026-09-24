@@ -8,23 +8,29 @@ import "./styles.css";
 
 function Shell() {
   const caller = useCaller();
+  const scope = caller ? (caller.allows_all ? "All services" : caller.services.join(", ")) : "";
   return (
-    <div className="page">
+    <div className="app">
       <header className="top">
         <Link to="/" className="mark">
           Case file
         </Link>
-        <p className="quiet who">
-          {caller ? caller.name : "Signed in"}
-          <button type="button" className="quiet-button" onClick={signOut}>
+        <div className="who">
+          <p className="who-id">
+            <span className="who-name">{caller ? caller.name : "Signed in"}</span>
+            {scope ? <span className="who-scope">{scope}</span> : null}
+          </p>
+          <button type="button" className="sign-out" onClick={signOut}>
             Sign out
           </button>
-        </p>
+        </div>
       </header>
-      <Routes>
-        <Route path="/" element={<IncidentList />} />
-        <Route path="/incidents/:id" element={<IncidentSheet />} />
-      </Routes>
+      <div className="page">
+        <Routes>
+          <Route path="/" element={<IncidentList />} />
+          <Route path="/incidents/:id" element={<IncidentSheet />} />
+        </Routes>
+      </div>
     </div>
   );
 }

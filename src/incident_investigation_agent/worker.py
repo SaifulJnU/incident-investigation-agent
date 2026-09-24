@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from incident_investigation_agent.core.config import Settings, enabled_connectors
 from incident_investigation_agent.core.logging import configure_logging
 from incident_investigation_agent.db.session import session_factory_from_url
-from incident_investigation_agent.services.investigation import run_once, wait_for_database
+from incident_investigation_agent.services.investigation import claim_batch, execute, wait_for_database
+
+BATCH = 4
 
 log = logging.getLogger("incident_investigation_agent.worker")
 
@@ -29,12 +32,29 @@ def main() -> None:
     )
     while True:
         try:
-            worked = run_once(factory, settings)
+            worked = _run_available(factory, settings)
         except Exception:
             log.exception("worker loop failed")
             worked = False
         if not worked:
             time.sleep(1)
+
+
+def _run_available(factory, settings: Settings) -> bool:
+    """Claim up to BATCH queued cases. Each case keeps its own note."""
+    with factory() as session:
+        runs = claim_batch(session, BATCH)
+        if not runs:
+            session.rollback()
+            return False
+        run_ids = [run.id for run in runs]
+        session.commit()
+    if len(run_ids) == 1:
+        execute(factory, settings, run_ids[0])
+        return True
+    with ThreadPoolExecutor(max_workers=len(run_ids)) as pool:
+        list(pool.map(lambda run_id: execute(factory, settings, run_id), run_ids))
+    return True
 
 
 if __name__ == "__main__":

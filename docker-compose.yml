@@ -2,6 +2,18 @@
 # In production, set DATABASE_URL from a secret and point MODEL_PROVIDER at bedrock.
 
 services:
+  floci:
+    image: floci/floci:latest
+    ports:
+      - "4566:4566"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - floci-data:/app/data
+    environment:
+      FLOCI_HOSTNAME: floci
+      FLOCI_STORAGE_MODE: persistent
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -29,11 +41,14 @@ services:
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
       BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-global.anthropic.claude-sonnet-4-6}
-      AWS_REGION: ${AWS_REGION:-us-west-2}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      # Floci stands in for CloudWatch. Leave AWS_ENDPOINT_URL empty for real AWS.
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-http://floci:4566}
+      CLOUDWATCH_LOG_GROUP_PREFIX: ${CLOUDWATCH_LOG_GROUP_PREFIX:-/aws/ecs/}
       LOG_DIR: /app/examples/logs
-      # Local compose reads the sample log folder. Production sets APP_ENV=prod.
+      # Local compose reads CloudWatch on Floci. Production sets APP_ENV=prod and clears AWS_ENDPOINT_URL.
       APP_ENV: local
-      CONNECTORS: local_logs
+      CONNECTORS: cloudwatch
       LOG_LEVEL: INFO
       # Local sign-in only. Production sets AUTH_MODE=oidc and does not set DEV_AUTH_SECRET.
       AUTH_MODE: dev
@@ -68,8 +83,28 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
+      floci:
+        condition: service_started
       api:
         condition: service_healthy
+
+  checkout:
+    image: incident-investigation-agent-worker
+    entrypoint: ["python"]
+    command: ["-m", "incident_investigation_agent.demo_checkout"]
+    environment:
+      PYTHONPATH: /src
+      AWS_ENDPOINT_URL: http://floci:4566
+      AWS_REGION: us-east-1
+      CHECKOUT_LOG_GROUP: /aws/ecs/checkout-api
+      CHECKOUT_PORT: "8090"
+    volumes:
+      - ./src:/src
+    ports:
+      - "8090:8090"
+    depends_on:
+      floci:
+        condition: service_started
 
   web:
     build:
@@ -83,3 +118,4 @@ services:
 
 volumes:
   pgdata:
+  floci-data:

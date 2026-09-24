@@ -30,6 +30,28 @@ export function formatWhen(iso: string): string {
   return `${formatted} UTC`;
 }
 
+export function timeTaken(startedIso: string | null, finishedIso: string | null): string {
+  if (!startedIso || !finishedIso) {
+    return "";
+  }
+  const started = new Date(startedIso).getTime();
+  const finished = new Date(finishedIso).getTime();
+  if (Number.isNaN(started) || Number.isNaN(finished) || finished < started) {
+    return "";
+  }
+  const totalSeconds = Math.round((finished - started) / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+}
+
 export function elapsed(iso: string, now = Date.now()): string {
   const start = new Date(iso).getTime();
   if (Number.isNaN(start)) {

@@ -85,39 +85,79 @@ export function SignIn() {
     window.location.assign(url.toString());
   }
 
+  function fillAccount(nextSubject: string, nextPassword: string) {
+    setSubject(nextSubject);
+    setPassword(nextPassword);
+    setError(null);
+  }
+
   return (
-    <main className="sign-in">
-      <h1>Sign in</h1>
-      <p className="quiet">Investigate only the services your company has granted you.</p>
-      {config?.mode === "dev" ? (
-        <form onSubmit={onDev} className="intake">
-          <label>
-            Username
-            <input value={subject} onChange={(event) => setSubject(event.target.value)} required autoComplete="username" />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-              autoComplete="current-password"
-            />
-          </label>
-          <button type="submit" disabled={busy}>
-            Sign in
-          </button>
-        </form>
-      ) : null}
-      {config?.mode === "oidc" ? (
-        <p className="actions">
-          <button type="button" onClick={onOidc}>
-            Continue with company login
-          </button>
-        </p>
-      ) : null}
-      {error ? <p className="problem">{error}</p> : null}
+    <main className="gate">
+      <section className="gate-brand">
+        <p className="mark">Case file</p>
+        <h1>The investigation, written down.</h1>
+        <p className="gate-lead">Search the systems this company turned on, then leave a note a person can check.</p>
+        <ul className="gate-points">
+          <li>One service per case</li>
+          <li>Read-only search</li>
+          <li>A name on mitigate and resolve</li>
+        </ul>
+      </section>
+      <section className="gate-panel">
+        <h2>Sign in</h2>
+        <p className="quiet">You only see the services your account is granted.</p>
+        {config?.mode === "dev" ? (
+          <form onSubmit={onDev} className="intake">
+            <label>
+              Username
+              <input
+                value={subject}
+                onChange={(event) => setSubject(event.target.value)}
+                required
+                autoComplete="username"
+                autoFocus
+              />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                autoComplete="current-password"
+              />
+            </label>
+            <button type="submit" disabled={busy}>
+              {busy ? "Signing in" : "Sign in"}
+            </button>
+            <div className="demo-accounts">
+              <p>Local demo</p>
+              <button type="button" className="account" onClick={() => fillAccount("oncall", "oncall-local")}>
+                <span>On-call engineer</span>
+                <span>checkout and payments</span>
+              </button>
+              <button type="button" className="account" onClick={() => fillAccount("platform", "platform-local")}>
+                <span>Platform owner</span>
+                <span>every service</span>
+              </button>
+            </div>
+          </form>
+        ) : null}
+        {config?.mode === "oidc" ? (
+          <p className="actions">
+            <button type="button" onClick={onOidc}>
+              Continue with company login
+            </button>
+          </p>
+        ) : null}
+        {!config && !error ? <p className="quiet">Loading sign-in.</p> : null}
+        {error ? (
+          <p className="problem" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </section>
     </main>
   );
 }
@@ -175,9 +215,18 @@ export function AuthCallback() {
   }, []);
 
   return (
-    <main className="sign-in">
-      <h1>Signing in</h1>
-      {error ? <p className="problem">{error}</p> : <p className="quiet">Checking the company login.</p>}
+    <main className="gate gate-wait">
+      <section className="gate-panel">
+        <p className="mark">Case file</p>
+        <h2>Signing in</h2>
+        {error ? (
+          <p className="problem" role="alert">
+            {error}
+          </p>
+        ) : (
+          <p className="quiet">Checking the company login.</p>
+        )}
+      </section>
     </main>
   );
 }

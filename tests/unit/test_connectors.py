@@ -62,12 +62,12 @@ def test_cloudwatch_reads_the_mapped_group(monkeypatch):
     class _Client:
         def filter_log_events(self, **kwargs):
             assert kwargs["logGroupName"] == "/aws/ecs/checkout-api"
-            assert kwargs["filterPattern"] == '"timeout"'
+            assert kwargs["filterPattern"] == "timeout"
             return {"events": [{"message": "vault timeout"}]}
 
     monkeypatch.setattr(
         "incident_investigation_agent.infrastructure.connectors.cloudwatch.logs_client",
-        lambda region: _Client(),
+        lambda region, endpoint_url="": _Client(),
     )
     settings = _settings(app_env="prod", cloudwatch_log_group_prefix="/aws/ecs/")
     result = search_cloudwatch_logs(settings, "checkout-api", "timeout", 5)

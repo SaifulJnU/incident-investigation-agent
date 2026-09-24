@@ -10,7 +10,7 @@ import {
   type EvidenceKind,
   type IncidentDetail,
 } from "./api";
-import { elapsed, formatWhen, SEVERITY_LABEL, STATUS_LABEL } from "./format";
+import { elapsed, formatWhen, timeTaken, SEVERITY_LABEL, STATUS_LABEL } from "./format";
 
 function who(name: string, subject: string): string {
   return name || subject;
@@ -23,6 +23,14 @@ const NOTE_KINDS: { value: EvidenceKind; label: string }[] = [
   { value: "change", label: "Change" },
   { value: "hypothesis", label: "Hypothesis" },
 ];
+
+const KIND_LABEL: Record<EvidenceKind, string> = {
+  symptom: "Symptom",
+  log: "Log line",
+  timeline: "Timeline",
+  change: "Change",
+  hypothesis: "Hypothesis",
+};
 
 export function IncidentSheet() {
   const { id = "" } = useParams();
@@ -72,7 +80,7 @@ export function IncidentSheet() {
 
   if (!detail && !error) {
     return (
-      <main>
+      <main className="sheet sheet-loading">
         <p className="quiet">Loading the case.</p>
       </main>
     );
@@ -80,9 +88,13 @@ export function IncidentSheet() {
 
   if (!detail) {
     return (
-      <main>
-        <p className="problem">{error}</p>
-        <Link to="/">All cases</Link>
+      <main className="sheet">
+        <p className="back">
+          <Link to="/">All cases</Link>
+        </p>
+        <p className="problem" role="alert">
+          {error}
+        </p>
       </main>
     );
   }
@@ -137,7 +149,12 @@ export function IncidentSheet() {
     }
   }
 
+  const taken = latest ? timeTaken(latest.started_at, latest.finished_at) : "";
   const live = detail.status === "open" || detail.status === "investigating";
+  const age = elapsed(detail.started_at, now);
+  const opener = who(detail.opened_by_name, detail.opened_by);
+  const mitigator = who(detail.mitigated_by_name, detail.mitigated_by);
+  const resolver = who(detail.resolved_by_name, detail.resolved_by);
 
   return (
     <main className="sheet">
@@ -145,57 +162,77 @@ export function IncidentSheet() {
         <Link to="/">All cases</Link>
       </p>
       <header className="case-head">
-        <div>
+        <span className={`rail ${detail.severity} ${live ? "live" : ""}`} aria-hidden="true" />
+        <div className="head-copy">
           <h1>{detail.title}</h1>
           <p className="service">{detail.service}</p>
+          <p className="head-status">
+            <span className={`chip ${detail.severity}`}>{SEVERITY_LABEL[detail.severity]}</span>
+            <span className={`chip ${detail.status}`}>{STATUS_LABEL[detail.status]}</span>
+          </p>
         </div>
-        <p className="severity-line">
-          <span className={`lamp ${detail.severity} ${live ? "live" : ""}`} aria-hidden="true" />
-          {SEVERITY_LABEL[detail.severity]}
-          <span className="gap" />
-          {STATUS_LABEL[detail.status]}
-        </p>
       </header>
-      <p className="when">
-        Started {formatWhen(detail.started_at)}
-        <span className="gap" />
-        {elapsed(detail.started_at, now)}
-        {who(detail.opened_by_name, detail.opened_by) ? (
-          <>
-            <span className="gap" />
-            Opened by {who(detail.opened_by_name, detail.opened_by)}
-          </>
+      <dl className="facts">
+        <div>
+          <dt>Started</dt>
+          <dd>{formatWhen(detail.started_at)}</dd>
+        </div>
+        {age ? (
+          <div>
+            <dt>Age</dt>
+            <dd>{age}</dd>
+          </div>
         ) : null}
-        {detail.mitigated_by_name || detail.mitigated_by ? (
-          <>
-            <span className="gap" />
-            Mitigated by {who(detail.mitigated_by_name, detail.mitigated_by)}
-          </>
+        {opener ? (
+          <div>
+            <dt>Opened by</dt>
+            <dd>{opener}</dd>
+          </div>
         ) : null}
-        {detail.resolved_by_name || detail.resolved_by ? (
-          <>
-            <span className="gap" />
-            Resolved by {who(detail.resolved_by_name, detail.resolved_by)}
-          </>
+        {mitigator ? (
+          <div>
+            <dt>Mitigated by</dt>
+            <dd>{mitigator}</dd>
+          </div>
         ) : null}
-      </p>
+        {resolver ? (
+          <div>
+            <dt>Resolved by</dt>
+            <dd>{resolver}</dd>
+          </div>
+        ) : null}
+      </dl>
       <p className="summary">{detail.summary}</p>
       <div className="actions">
         <button type="button" onClick={onInvestigate} disabled={busy || running || detail.status === "resolved"}>
           {running ? "Investigation running" : "Investigate"}
         </button>
-        <button type="button" className="quiet-button" onClick={() => mark("mitigated")} disabled={busy || detail.status === "mitigated"}>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => mark("mitigated")}
+          disabled={busy || detail.status === "mitigated"}
+        >
           Mark mitigated
         </button>
-        <button type="button" className="quiet-button" onClick={() => mark("resolved")} disabled={busy || detail.status === "resolved"}>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => mark("resolved")}
+          disabled={busy || detail.status === "resolved"}
+        >
           Mark resolved
         </button>
       </div>
-      {error ? <p className="problem">{error}</p> : null}
+      {error ? (
+        <p className="problem" role="alert">
+          {error}
+        </p>
+      ) : null}
       <div className="sheet-grid">
         <section>
           <h2>Timeline</h2>
-          <EvidenceList items={timeline} empty="Nothing on the timeline yet. Investigate, or add a note." />
+          <EvidenceList items={timeline} empty="Nothing on the timeline yet. Investigate, or add a note." showKind />
         </section>
         <div className="side">
           <section>
@@ -204,11 +241,11 @@ export function IncidentSheet() {
           </section>
           <section>
             <h2>Log lines</h2>
-            <EvidenceList items={logs} empty="No log lines recorded yet." />
+            <EvidenceList items={logs} empty="No log lines recorded yet." mono />
           </section>
         </div>
       </div>
-      <section className="note">
+      <section className="brief">
         <h2>Incident note</h2>
         {latest?.provider ? (
           <p className="quiet">
@@ -217,8 +254,13 @@ export function IncidentSheet() {
         ) : (
           <p className="quiet">No investigation yet.</p>
         )}
-        {latest?.error ? <p className="problem">{latest.error}</p> : null}
+        {latest?.error ? (
+          <p className="problem" role="alert">
+            {latest.error}
+          </p>
+        ) : null}
         {latest?.report ? <div className="report">{latest.report}</div> : null}
+        {taken ? <p className="taken">Time taken: {taken}</p> : null}
       </section>
       <form onSubmit={onNote} className="intake note-form">
         <h2>Add a note</h2>
@@ -244,7 +286,17 @@ export function IncidentSheet() {
   );
 }
 
-function EvidenceList({ items, empty }: { items: Evidence[]; empty: string }) {
+function EvidenceList({
+  items,
+  empty,
+  showKind = false,
+  mono = false,
+}: {
+  items: Evidence[];
+  empty: string;
+  showKind?: boolean;
+  mono?: boolean;
+}) {
   if (items.length === 0) {
     return <p className="quiet">{empty}</p>;
   }
@@ -252,8 +304,9 @@ function EvidenceList({ items, empty }: { items: Evidence[]; empty: string }) {
     <ol className="timeline">
       {items.map((item) => (
         <li key={item.id}>
+          {showKind ? <span className="kind">{KIND_LABEL[item.kind]}</span> : null}
           <time dateTime={item.recorded_at}>{formatWhen(item.recorded_at)}</time>
-          <p>{item.summary}</p>
+          <p className={mono ? "log-body" : undefined}>{item.summary}</p>
           <p className="quiet">{item.source}</p>
         </li>
       ))}

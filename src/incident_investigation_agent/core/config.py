@@ -115,6 +115,7 @@ class Settings:
     dev_users: tuple[DevUser, ...] = ()
     app_env: str = "local"
     connectors: tuple[str, ...] = ()
+    aws_endpoint_url: str = ""
     cloudwatch_log_group_prefix: str = ""
     cloudwatch_log_groups: str = ""
     cloudwatch_lookback_minutes: int = 60
@@ -173,6 +174,7 @@ class Settings:
                 "BEDROCK_MODEL_ID", "global.anthropic.claude-sonnet-4-6"
             ),
             aws_region=_env("AWS_REGION", "us-west-2"),
+            aws_endpoint_url=_env("AWS_ENDPOINT_URL", ""),
             log_dir=Path(_env("LOG_DIR", "examples/logs")),
             case_dir=Path(_env("CASE_DIR", ".case")),
             database_url=_env(

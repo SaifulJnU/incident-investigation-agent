@@ -17,10 +17,15 @@ from incident_investigation_agent.infrastructure.connectors.mapping import (
 _GROUP = re.compile(r"^[\w./-]{1,512}$")
 
 
-def logs_client(region: str):
+def logs_client(region: str, endpoint_url: str = ""):
     import boto3
 
-    return boto3.client("logs", region_name=region)
+    kwargs = {"region_name": region}
+    if endpoint_url:
+        kwargs["endpoint_url"] = endpoint_url
+        kwargs["aws_access_key_id"] = "test"
+        kwargs["aws_secret_access_key"] = "test"
+    return boto3.client("logs", **kwargs)
 
 
 def tools_for(settings: Settings, service: str | None):
@@ -53,10 +58,10 @@ def search_cloudwatch_logs(settings: Settings, service: str | None, query: str, 
     capped = _limit(limit)
     start = int((time.time() - settings.cloudwatch_lookback_minutes * 60) * 1000)
     try:
-        client = logs_client(settings.aws_region)
+        client = logs_client(settings.aws_region, settings.aws_endpoint_url)
         page = client.filter_log_events(
             logGroupName=group,
-            filterPattern=f'"{needle}"',
+            filterPattern=needle if " " not in needle else f'"{needle}"',
             startTime=start,
             limit=capped,
         )

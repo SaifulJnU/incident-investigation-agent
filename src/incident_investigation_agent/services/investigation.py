@@ -12,7 +12,8 @@ from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.db.models import Incident, InvestigationRun, utcnow
 from incident_investigation_agent.db.session import database_ready
 from incident_investigation_agent.repositories.cases import DbCaseStore
-from incident_investigation_agent.services.agent import build_agent
+from incident_investigation_agent.services.agent import build_note_agent
+from incident_investigation_agent.services.gather import gather
 from incident_investigation_agent.services.report import IncidentBrief, investigation_prompt, message_text
 
 log = logging.getLogger("incident_investigation_agent.worker")
@@ -37,7 +38,29 @@ def claim_next(session: Session) -> InvestigationRun | None:
     return run
 
 
-def execute(factory: sessionmaker[Session], settings: Settings, run_id, investigate) -> None:
+def claim_batch(session: Session, limit: int) -> list[InvestigationRun]:
+    """Claim several queued runs. Each run stays tied to its own case."""
+    runs = list(
+        session.scalars(
+            select(InvestigationRun)
+            .where(InvestigationRun.status == "queued")
+            .order_by(InvestigationRun.created_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        ).all()
+    )
+    now = utcnow()
+    for run in runs:
+        run.status = "running"
+        run.started_at = now
+        incident = session.get(Incident, run.incident_id)
+        if incident is not None and incident.status == "open":
+            incident.status = "investigating"
+            incident.updated_at = now
+    return runs
+
+
+def execute(factory: sessionmaker[Session], settings: Settings, run_id, investigate=None) -> None:
     with factory() as session:
         run = session.get(InvestigationRun, run_id)
         if run is None or run.status in {"completed", "failed"}:
@@ -73,8 +96,9 @@ def execute(factory: sessionmaker[Session], settings: Settings, run_id, investig
 
     store = DbCaseStore(factory, incident_id)
     prompt = investigation_prompt(brief, store.list())
+    runner = investigate or _investigate_with_agent
     try:
-        report = investigate(settings, store, prompt, service_name)
+        report = runner(settings, store, prompt, service_name)
     except Exception as exc:
         log.exception("investigation failed run=%s", run_id)
         _finish(factory, run_id, status="failed", error=str(exc)[:2000])
@@ -96,8 +120,20 @@ def run_once(factory: sessionmaker[Session], settings: Settings, investigate=Non
 
 
 def _investigate_with_agent(settings: Settings, store: DbCaseStore, prompt: str, service: str) -> str:
-    agent = build_agent(settings, store=store, service=service)
-    return message_text(agent(prompt))
+    batch = gather(settings, service)
+    for item in batch.findings:
+        store.add(item.kind, item.summary, item.source)
+    note = _note_prompt(prompt, batch.text)
+    return message_text(build_note_agent(settings)(note))
+
+
+def _note_prompt(prompt: str, searches: str) -> str:
+    marker = "Start by calling search_logs."
+    base = prompt.split(marker)[0].rstrip() if marker in prompt else prompt.rstrip()
+    return (
+        f"{base}\n\nSearches already completed:\n{searches}\n\n"
+        "Write the incident note from these searches."
+    )
 
 
 def _finish(
