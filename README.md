@@ -1,181 +1,94 @@
 # incident-investigation-agent
 
-A Python incident investigation agent built with the [Strands Agents SDK](https://strandsagents.com/). The same agent runs on Amazon Bedrock in production and on any local Ollama model while you develop.
+On-call engineers lose the first minutes of an incident to the same hunt: CloudWatch, Datadog, Loki, and GitHub, then a note written by hand. This service does that hunt and leaves a case a person can act on.
 
-## Plan
+The alert system still pages and assigns. This product does not replace it. It writes the investigation: what broke, the evidence, a leading cause, one alternative, and the safest next step.
 
-An investigation is a case file, not a chat transcript. That is how Resolve, Cleric, Traversal, and incident.io present the work: a timeline, the evidence behind it, hypotheses, and a note a person can act on. The agent is read-only. It searches and records. A person marks the mitigation.
+## The business problem
 
-```
-browser (case file)
-        |
-        v
-  API  ---- Postgres: cases, evidence, investigation runs
-        |
-        v
-  worker ---- Strands agent ---- APP_ENV=local: log folder
-        |                         APP_ENV=prod: CloudWatch, Datadog, Loki, GitHub
-        +-- production: Amazon Bedrock
-        +-- local:      any Ollama model
-```
+A checkout failure at 14:02 is not a missing dashboard. The company already has logs, deploys, and an incident tool. The expensive part is a senior engineer reconstructing the timeline under pressure, then typing it again into the ticket.
 
-The console is the case. The CLI still writes a local `.case/case.json` when you want a single run without Docker.
+Case file keeps one record:
 
-Investigation order baked into the system prompt:
+- The case: service, severity, start time, and what the engineer already knows
+- The evidence: a symptom, a log line, a timeline entry, a change, or a hypothesis
+- The note: impact, leading cause, an alternative, confidence, the next checks, and the safest mitigation
+- The name of the person who opened it, asked for the investigation, mitigated it, and resolved it
 
-1. Restate symptom, start time, and blast radius.
-2. Record a timeline of deploys, config changes, and error spikes.
-3. Search logs before naming a cause.
-4. Give one leading hypothesis and one alternative, each tied to recorded evidence.
-5. Recommend the next checks and the safest immediate mitigation.
-6. Close with impact, leading cause, confidence, and open questions.
+The agent is read-only. It searches and records. A person marks the case mitigated when the immediate harm has stopped, and resolved when the service is normal. A resolved case cannot be investigated again.
 
-Running now:
+## What changes for the on-call engineer
 
-- Docker Compose: Postgres, API, worker, and the web console
-- Cases, evidence, and investigation runs in Postgres
-- A worker that runs the Strands agent without holding the HTTP request
-- Bedrock in production, any pulled Ollama model locally
-- Local log search when `APP_ENV=local` (`examples/logs` in the image)
-- Production log sources when `APP_ENV=prod`: CloudWatch, Datadog, Loki, and GitHub
-- The case-file console: open a case, timeline, hypotheses, incident note
+Before: open four systems, search for `timeout` and `500`, find the last deploy, write the note, then decide.
 
-Still to build:
+After: open the case and choose Investigate. The API returns immediately. A worker asks the model, the model calls only the systems this company turned on, and the note lands on the case. The engineer checks that a quoted line is real, does the fix in the real platform, then marks mitigated or resolved.
 
-- Hypothesis confidence and a ruled-out state
-- A full audit log of every status change
-- Slack and PagerDuty intake
-- Postmortem export
-- An approval gate before any remediation write
-- Request metrics and a time limit on a run
-- CI that publishes the images
+Locally the search is a log folder and the model is any Ollama model that can call tools. In production the model is Amazon Bedrock and the search is CloudWatch, Datadog, Loki, and GitHub. The console stays the same. `CONNECTORS=cloudwatch,github` turns the unused systems off.
 
-## Layout
+## Security
 
-The Python package is split the way a German production service usually is: the case rules do not import FastAPI or SQLAlchemy, HTTP only calls the repository, and the model and log files sit behind adapters.
+Production login is the company identity provider. The API accepts a signed JWT and checks issuer, audience, and expiry. It does not keep a second password list. `AUTH_MODE=dev` exists only for the local demo.
 
-```
-src/incident_investigation_agent/
-  domain/            evidence and the store port
-  services/          agent, investigation run, incident note
-  repositories/      Postgres reads and writes
-  db/                engine, sessions, table definitions
-  infrastructure/    Bedrock or Ollama, log connectors, on-disk case file
-  api/               FastAPI routes, request bodies, session dependency
-  core/              settings and process logging
-  cli.py             investigate command
-  worker.py          process that claims queued runs
-web/                 case-file console
-deploy/              API image, web image, nginx
-examples/            sample brief and logs
-```
+Authorization is the service on the case:
 
-## Console
+- No token: the API answers 401
+- Opening a case for a service the token does not grant: 403
+- Reading another service's case: 404, so a caller cannot learn that the case exists
+- Lists and counts stay inside the granted services
+- The role `incident-admin`, or a service grant of `*`, can open every service
 
-Docker Desktop is enough. The API image runs migrations on startup. Ollama on the host is reached at `host.docker.internal:11434`. Set `MODEL_PROVIDER=bedrock` in the shell before `docker compose up` when you want Bedrock instead. The database password in `docker-compose.yml` is for this local stack only.
+A checkout case cannot read payments logs, another CloudWatch group, another Datadog service, or another GitHub repository. Connector queries reject path traversal and unexpected characters. API keys and tokens stay in the environment. They are not written into the case.
+
+The worker cannot create a commit, push a log line, restart a service, or roll back a deploy. A missing connector setting is reported on that tool. The model is told to say a fact is unknown when it is not in the case or in a tool result.
+
+## What a team can measure
+
+Every investigation is a row. A team can report on the work without reading a chat scroll.
+
+| Record | What it shows |
+| --- | --- |
+| Time to a note | The run moves from queued to running to completed or failed, with a start and a finish |
+| Who acted | Name and login for open, investigate, mitigate, and resolve |
+| Scope | The service on the case, and that the search stayed inside it |
+| Evidence | The facts that were kept, separate from the prose note |
+| Outcome | Open, investigating, mitigated, or resolved, with counts on the case list |
+
+Severity is `sev1` through `sev4`. It is stored on the case and sent to the model. Paging stays in the existing alert tool.
+
+## Run it
+
+Docker Desktop is enough for the local case. The API applies database migrations on startup.
 
 ```bash
 docker compose up --build
 ```
 
-Open http://localhost:8080. The API is on port 8000. Local compose signs you in with a username and password, not the company identity provider. Use username `oncall` and password `oncall-local` for checkout and payments, or `platform` and `platform-local` for every service. Then use "Use the checkout sample", open the case, and Investigate. The sample log for that service is `examples/logs/checkout-api/api.log`. An investigation only searches the directory for the case's service.
+Open http://localhost:8080. Sign in with username `oncall` and password `oncall-local` (checkout and payments) or `platform` and `platform-local` (every service). Choose "Use the checkout sample", open the case, and choose Investigate.
 
-Production sets `APP_ENV=prod`, `AUTH_MODE=oidc`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, and `OIDC_CLIENT_ID`. The access token must be a signed JWT. A `services` claim lists the services that person may open. The role `incident-admin` may open every service. Do not set `DEV_AUTH_SECRET` in production.
-
-## Setup
-
-Python 3.10 or newer.
-
-```bash
-python -m venv .venv
-```
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
-copy .env.example .env
-```
-
-macOS or Linux:
-
-```bash
-source .venv/bin/activate
-pip install -e ".[dev]"
-cp .env.example .env
-```
-
-### Local Ollama
-
-Install [Ollama](https://ollama.com/), start it, and pull any model that can call tools. `llama3.1` is the default. Set `OLLAMA_MODEL` to a different tag if you want another one.
-
-```bash
-ollama pull llama3.1
-```
-
-`.env`:
-
-```
-MODEL_PROVIDER=ollama
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=llama3.1
-```
-
-### Production Amazon Bedrock
-
-Leave `MODEL_PROVIDER` unset, or set it to `bedrock`. The SDK uses the normal AWS credential chain: environment variables, shared config, or an IAM role on EC2, ECS, or Lambda. Enable the model in the Bedrock console.
-
-```
-MODEL_PROVIDER=bedrock
-BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-4-6
-AWS_REGION=us-west-2
-```
-
-### Where logs come from
-
-`APP_ENV=local` searches `LOG_DIR/<service>`. Docker Compose sets this. A checkout case reads `examples/logs/checkout-api`.
-
-`APP_ENV=prod` searches CloudWatch, Datadog, Loki, and GitHub. Each tool is read-only and limited to the case's service. Replace the values below. If the company does not use one of them, delete that block and set `CONNECTORS` to the ones it does use, for example `CONNECTORS=cloudwatch,github`.
+Production replaces the local login and the sample log folder. Set these, and change only the values that are still placeholders:
 
 ```
 APP_ENV=prod
+MODEL_PROVIDER=bedrock
+BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-4-6
 AWS_REGION=us-west-2
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/investigations
+AUTH_MODE=oidc
+OIDC_ISSUER=https://login.example.com
+OIDC_AUDIENCE=case-file
+OIDC_CLIENT_ID=case-file
 CLOUDWATCH_LOG_GROUP_PREFIX=/aws/ecs/
-CLOUDWATCH_LOOKBACK_MINUTES=60
 DATADOG_SITE=datadoghq.com
 DATADOG_API_KEY=replace-me
 DATADOG_APP_KEY=replace-me
-DATADOG_SERVICE_TAG=service
-DATADOG_LOOKBACK_MINUTES=60
 LOKI_URL=https://loki.example.com
 LOKI_TOKEN=replace-me
-LOKI_LABEL=service
-LOKI_LOOKBACK_MINUTES=60
 GITHUB_API_URL=https://api.github.com
 GITHUB_TOKEN=replace-me
 GITHUB_ORG=replace-me
-GITHUB_LOOKBACK_HOURS=24
 ```
 
-CloudWatch uses the worker's AWS credentials (the same chain as Bedrock) and needs `logs:FilterLogEvents`. A case for `checkout-api` reads the log group `CLOUDWATCH_LOG_GROUP_PREFIX` plus `checkout-api`. Set `CLOUDWATCH_LOG_GROUPS=checkout-api=/aws/lambda/checkout` when one service does not follow that prefix. GitHub reads `GITHUB_ORG/checkout-api` unless `GITHUB_REPOS` names the repository. A missing value is reported on that tool and the case stays open. The console does not change.
-
-## Run
-
-```bash
-investigate "Checkout 500s started at 14:02 UTC after the payments-api deploy"
-investigate --brief examples/sample-incident.md
-```
-
-Or:
-
-```bash
-python -m incident_investigation_agent --brief examples/sample-incident.md
-```
-
-The agent prints which provider it is using, then the investigation. Evidence it records lands in `.case/case.json`. That directory is gitignored.
-
-## Test
+CloudWatch uses the worker's AWS role and needs `logs:FilterLogEvents`. A case for `checkout-api` reads that prefix plus the service name. Do not set `DEV_AUTH_SECRET` in production. Drop a system the company does not use and set `CONNECTORS` to the rest.
 
 ```bash
 pytest
