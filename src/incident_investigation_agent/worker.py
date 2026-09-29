@@ -9,7 +9,12 @@ from concurrent.futures import ThreadPoolExecutor
 from incident_investigation_agent.core.config import Settings, enabled_connectors
 from incident_investigation_agent.core.logging import configure_logging
 from incident_investigation_agent.db.session import session_factory_from_url
-from incident_investigation_agent.services.investigation import claim_batch, execute, wait_for_database
+from incident_investigation_agent.services.investigation import (
+    claim_batch,
+    execute,
+    release_stale_runs,
+    wait_for_database,
+)
 
 BATCH = 4
 
@@ -43,9 +48,10 @@ def main() -> None:
 def _run_available(factory, settings: Settings) -> bool:
     """Claim up to BATCH queued cases. Each case keeps its own note."""
     with factory() as session:
+        release_stale_runs(session, older_than_minutes=settings.run_timeout_minutes)
         runs = claim_batch(session, BATCH)
         if not runs:
-            session.rollback()
+            session.commit()
             return False
         run_ids = [run.id for run in runs]
         session.commit()

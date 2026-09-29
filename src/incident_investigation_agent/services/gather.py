@@ -16,22 +16,27 @@ from incident_investigation_agent.infrastructure.connectors import (
 
 QUERIES = ("timeout", "500")
 
-_MISS = (
+# Connector status sentences, not words that can appear inside a real log line.
+_STATUS = (
     "no lines matched",
-    "not configured",
-    "was not searched",
-    "not searched",
-    "does not exist",
+    "log directory does not exist",
     "query is empty",
+    "limit must be at least",
+    "is not configured",
+    "was not searched",
+    "were not searched",
+    "was not queried",
     "no service is set",
-    "no commits",
+    "search failed",
     "commit list failed",
     "invalid service",
-    "not queried",
-    "returned no",
+    "returned no ",
     "has no repository",
-    "must be",
-    "limit must",
+    "no cloudwatch events matched",
+    "no commits on ",
+    "does not send",
+    "must be a label",
+    "must be an https",
 )
 
 
@@ -90,23 +95,21 @@ def _combine(blocks: list[tuple[str, str, str]]) -> SearchBatch:
         title = f"{label} {query}".strip()
         lines.append(f"{title}:")
         lines.append(body.strip() or "(empty)")
-        if _miss(body):
-            continue
         kind = "change" if label == "list_recent_commits" else "log"
         for raw in body.splitlines():
             summary = raw.strip()
-            if not summary or summary in seen:
+            if not summary or _status_line(summary) or summary in seen:
                 continue
             seen.add(summary)
             findings.append(Finding(kind, summary, _source(label, summary)))
     return SearchBatch("\n".join(lines), tuple(findings))
 
 
-def _miss(body: str) -> bool:
-    head = body.strip().lower()
+def _status_line(line: str) -> bool:
+    head = line.strip().lower()
     if not head:
         return True
-    return any(part in head for part in _MISS)
+    return any(part in head for part in _STATUS)
 
 
 def _source(label: str, summary: str) -> str:

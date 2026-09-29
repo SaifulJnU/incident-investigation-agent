@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -17,6 +18,34 @@ from incident_investigation_agent.services.gather import gather
 from incident_investigation_agent.services.report import IncidentBrief, investigation_prompt, message_text
 
 log = logging.getLogger("incident_investigation_agent.worker")
+
+
+def release_stale_runs(session: Session, *, older_than_minutes: int) -> int:
+    """Fail runs a worker claimed and then stopped before finishing.
+
+    A crashed worker leaves the run in ``running``. The unique active-run
+    index then refuses a new investigation for that case.
+    """
+    cutoff = utcnow() - timedelta(minutes=older_than_minutes)
+    runs = list(
+        session.scalars(
+            select(InvestigationRun).where(
+                InvestigationRun.status == "running",
+                InvestigationRun.started_at.is_not(None),
+                InvestigationRun.started_at < cutoff,
+            )
+        ).all()
+    )
+    now = utcnow()
+    for run in runs:
+        run.status = "failed"
+        run.error = "The worker stopped before this run finished."
+        run.finished_at = now
+        incident = session.get(Incident, run.incident_id)
+        if incident is not None and incident.status == "investigating":
+            incident.status = "open"
+            incident.updated_at = now
+    return len(runs)
 
 
 def claim_next(session: Session) -> InvestigationRun | None:

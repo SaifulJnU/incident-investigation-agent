@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 
 from sqlalchemy import create_engine, select
@@ -7,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.db.models import Base, EvidenceItem, Incident, InvestigationRun, utcnow
 from incident_investigation_agent.repositories.cases import open_incident, queue_run
-from incident_investigation_agent.services.investigation import execute
+from incident_investigation_agent.services.investigation import execute, release_stale_runs
 from incident_investigation_agent.services.report import message_text
 
 
@@ -88,6 +89,39 @@ def test_execute_records_a_failure():
         finished = session.get(InvestigationRun, run_id)
     assert finished.status == "failed"
     assert "ollama is not running" in finished.error
+
+
+def test_a_run_left_by_a_stopped_worker_can_be_investigated_again():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        incident = open_incident(
+            session,
+            title="Checkout errors",
+            summary="500s after the deploy.",
+            service="checkout-api",
+            severity="sev1",
+            started_at=utcnow(),
+        )
+        run = queue_run(session, incident, provider="ollama", model_name="llama3.1")
+        run.status = "running"
+        run.started_at = utcnow() - timedelta(minutes=30)
+        incident.status = "investigating"
+        session.commit()
+
+    with factory() as session:
+        released = release_stale_runs(session, older_than_minutes=20)
+        session.commit()
+        finished = session.scalars(select(InvestigationRun)).one()
+        incident = session.scalars(select(Incident)).one()
+    assert released == 1
+    assert finished.status == "failed"
+    assert incident.status == "open"
 
 
 def _settings() -> Settings:

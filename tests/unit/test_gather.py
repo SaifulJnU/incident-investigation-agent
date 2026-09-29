@@ -17,6 +17,18 @@ def test_local_searches_run_together_and_keep_hits():
     assert len(summaries) == len(set(summaries))
 
 
+def test_a_matching_line_that_says_must_be_is_kept(tmp_path):
+    service = tmp_path / "checkout-api"
+    service.mkdir()
+    (service / "api.log").write_text(
+        "ERROR timeout: value must be an integer\n",
+        encoding="utf-8",
+    )
+    settings = _settings(tmp_path, connectors=("local_logs",))
+    batch = gather(settings, "checkout-api")
+    assert any("must be" in item.summary for item in batch.findings)
+
+
 def test_a_miss_is_reported_and_not_stored():
     settings = _settings(Path("examples/logs"), connectors=("local_logs",))
     batch = gather(settings, "payments-api")
