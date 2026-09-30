@@ -33,6 +33,8 @@ _STATUS = (
     "returned no ",
     "has no repository",
     "no cloudwatch events matched",
+    "no datadog logs matched",
+    "no loki lines matched",
     "no commits on ",
     "does not send",
     "must be a label",

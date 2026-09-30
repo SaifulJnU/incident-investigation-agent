@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from incident_investigation_agent.core.config import Settings
-from incident_investigation_agent.services.gather import gather
+from incident_investigation_agent.services.gather import _combine, gather
 from incident_investigation_agent.services.investigation import _note_prompt
 
 
@@ -27,6 +27,30 @@ def test_a_matching_line_that_says_must_be_is_kept(tmp_path):
     settings = _settings(tmp_path, connectors=("local_logs",))
     batch = gather(settings, "checkout-api")
     assert any("must be" in item.summary for item in batch.findings)
+
+
+def test_empty_datadog_and_loki_searches_are_not_stored():
+    batch = _combine(
+        [
+            (
+                "search_datadog",
+                "timeout",
+                "No Datadog logs matched 'timeout' for service:checkout-api during the last 60 minutes.",
+            ),
+            (
+                "search_loki",
+                "500",
+                "No Loki lines matched '500' for service=checkout-api during the last 60 minutes.",
+            ),
+            (
+                "search_cloudwatch",
+                "timeout",
+                "checkout-api: ERROR timeout: value must be an integer",
+            ),
+        ]
+    )
+    summaries = [item.summary for item in batch.findings]
+    assert summaries == ["checkout-api: ERROR timeout: value must be an integer"]
 
 
 def test_a_miss_is_reported_and_not_stored():

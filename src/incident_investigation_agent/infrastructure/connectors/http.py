@@ -31,13 +31,29 @@ def request_json(
         with urlopen(request, timeout=timeout) as response:
             raw = response.read()
     except HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:300]
+        detail = _redact(exc.read().decode("utf-8", errors="replace")[:300], req_headers)
         raise ConnectorError(f"HTTP {exc.code}. {detail}") from None
     except URLError as exc:
-        raise ConnectorError(f"Could not reach the service ({exc.reason}).") from None
+        reason = _redact(str(exc.reason), req_headers)
+        raise ConnectorError(f"Could not reach the service ({reason}).") from None
     if not raw:
         return {}
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
         raise ConnectorError("The service returned a response that was not JSON.") from None
+
+
+def _redact(text: str, headers: dict[str, str]) -> str:
+    """Drop header secrets if a service echoes them in an error."""
+    redacted = text
+    for value in headers.values():
+        secret = value.strip()
+        if len(secret) < 8:
+            continue
+        redacted = redacted.replace(secret, "[redacted]")
+        if secret.lower().startswith("bearer "):
+            token = secret.split(None, 1)[1]
+            if len(token) >= 8:
+                redacted = redacted.replace(token, "[redacted]")
+    return redacted

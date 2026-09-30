@@ -1,10 +1,15 @@
+from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlparse
+
+import pytest
 
 from incident_investigation_agent.core.config import Settings, enabled_connectors
 from incident_investigation_agent.infrastructure.connectors.cloudwatch import search_cloudwatch_logs
 from incident_investigation_agent.infrastructure.connectors.datadog import search_datadog_logs
 from incident_investigation_agent.infrastructure.connectors.github import list_commits
+from incident_investigation_agent.infrastructure.connectors.http import ConnectorError, request_json
 from incident_investigation_agent.infrastructure.connectors.loki import search_loki_logs
 from incident_investigation_agent.infrastructure.connectors.local_logs import search_local_logs
 from incident_investigation_agent.infrastructure.connectors.registry import connector_tools
@@ -151,3 +156,25 @@ def test_github_uses_the_org_and_hides_the_token(monkeypatch):
 def test_github_names_the_missing_token():
     result = list_commits(_settings(app_env="prod", github_org="acme"), "checkout-api")
     assert result == "GitHub is not configured. Set GITHUB_TOKEN."
+
+
+def test_http_error_does_not_keep_a_header_secret(monkeypatch):
+    secret = "dd-secret-token-value"
+
+    def boom(request, timeout):
+        raise HTTPError(
+            request.full_url,
+            403,
+            "no",
+            None,
+            BytesIO(f"rejected {secret}".encode()),
+        )
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.infrastructure.connectors.http.urlopen",
+        boom,
+    )
+    with pytest.raises(ConnectorError) as caught:
+        request_json("https://api.example.com/logs", headers={"DD-API-KEY": secret})
+    assert secret not in str(caught.value)
+    assert "[redacted]" in str(caught.value)
