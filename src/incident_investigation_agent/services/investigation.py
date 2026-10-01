@@ -150,10 +150,20 @@ def run_once(factory: sessionmaker[Session], settings: Settings, investigate=Non
 
 def _investigate_with_agent(settings: Settings, store: DbCaseStore, prompt: str, service: str) -> str:
     batch = gather(settings, service)
-    for item in batch.findings:
-        store.add(item.kind, item.summary, item.source)
+    _record_findings(store, batch.findings)
     note = _note_prompt(prompt, batch.text)
     return message_text(build_note_agent(settings)(note))
+
+
+def _record_findings(store, findings) -> None:
+    """Skip a line the case already has, so a second run does not copy it."""
+    existing = {item.summary for item in store.list()}
+    for item in findings:
+        summary = item.summary.strip()
+        if not summary or summary in existing:
+            continue
+        store.add(item.kind, summary, item.source)
+        existing.add(summary)
 
 
 def _note_prompt(prompt: str, searches: str) -> str:
