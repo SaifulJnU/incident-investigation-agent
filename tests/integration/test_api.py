@@ -178,6 +178,58 @@ def test_mark_mitigated(client):
     assert totals.json()["all"] == 1
 
 
+def test_a_resolved_case_stays_closed(client):
+    headers = _auth(client, "oncall", "oncall-password")
+    created = client.post(
+        "/api/incidents",
+        headers=headers,
+        json={
+            "title": "Checkout errors",
+            "service": "checkout-api",
+            "severity": "sev1",
+            "summary": "POST /checkout returns 500.",
+        },
+    )
+    incident_id = created.json()["id"]
+    claimed = client.patch(
+        f"/api/incidents/{incident_id}",
+        headers=headers,
+        json={"status": "investigating"},
+    )
+    assert claimed.status_code == 409
+    mitigated = client.patch(
+        f"/api/incidents/{incident_id}",
+        headers=headers,
+        json={"status": "mitigated"},
+    )
+    assert mitigated.status_code == 200
+    again = client.patch(
+        f"/api/incidents/{incident_id}",
+        headers=headers,
+        json={"status": "mitigated"},
+    )
+    assert again.status_code == 409
+    assert again.json()["detail"] == "This case is already mitigated."
+    resolved = client.patch(
+        f"/api/incidents/{incident_id}",
+        headers=headers,
+        json={"status": "resolved"},
+    )
+    assert resolved.status_code == 200
+    body = resolved.json()
+    assert body["status"] == "resolved"
+    assert body["mitigated_by_name"] == "On-call engineer"
+    assert body["resolved_by_name"] == "On-call engineer"
+    for status in ("open", "investigating", "mitigated", "resolved"):
+        refused = client.patch(
+            f"/api/incidents/{incident_id}",
+            headers=headers,
+            json={"status": status},
+        )
+        assert refused.status_code == 409
+        assert refused.json()["detail"] == "This case is resolved."
+
+
 def test_dev_sign_in_rejects_a_wrong_password(client):
     response = client.post(
         "/api/auth/dev/token",

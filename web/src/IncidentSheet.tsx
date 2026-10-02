@@ -211,7 +211,7 @@ export function IncidentSheet() {
           type="button"
           className="secondary"
           onClick={() => mark("mitigated")}
-          disabled={busy || detail.status === "mitigated"}
+          disabled={busy || detail.status === "mitigated" || detail.status === "resolved"}
         >
           Mark mitigated
         </button>

@@ -95,15 +95,7 @@ def update_incident(
 ):
     incident = _require(session, incident_id, principal)
     if body.status is not None:
-        incident.status = body.status
-        if body.status == "mitigated":
-            incident.mitigated_by = principal.subject
-            incident.mitigated_by_name = principal.name
-            incident.mitigated_at = utcnow()
-        elif body.status == "resolved":
-            incident.resolved_by = principal.subject
-            incident.resolved_by_name = principal.name
-            incident.resolved_at = utcnow()
+        _mark(incident, body.status, principal)
     if body.severity is not None:
         incident.severity = body.severity
     if body.summary is not None:
@@ -225,6 +217,28 @@ def _detail(session: Session, incident):
             for run in runs_for(session, incident.id)
         ],
     }
+
+
+def _mark(incident, status: str, principal: Principal) -> None:
+    """A person may close a case. They cannot reopen it or claim the worker's status."""
+    if incident.status == "resolved":
+        raise HTTPException(status_code=409, detail="This case is resolved.")
+    if status not in {"mitigated", "resolved"}:
+        raise HTTPException(
+            status_code=409,
+            detail="A person can only mark a case mitigated or resolved.",
+        )
+    if status == incident.status:
+        raise HTTPException(status_code=409, detail="This case is already mitigated.")
+    incident.status = status
+    if status == "mitigated":
+        incident.mitigated_by = principal.subject
+        incident.mitigated_by_name = principal.name
+        incident.mitigated_at = utcnow()
+    else:
+        incident.resolved_by = principal.subject
+        incident.resolved_by_name = principal.name
+        incident.resolved_at = utcnow()
 
 
 def _require(session: Session, incident_id: uuid.UUID, principal: Principal):
