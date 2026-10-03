@@ -122,7 +122,7 @@ def create_evidence(
         incident.id,
         kind=body.kind,
         summary=body.summary,
-        source=principal.subject,
+        source=_actor(principal),
     )
     incident.updated_at = utcnow()
     session.flush()
@@ -217,6 +217,17 @@ def _detail(session: Session, incident):
             for run in runs_for(session, incident.id)
         ],
     }
+
+
+def _actor(principal: Principal) -> str:
+    """Name and login, so a note shows who wrote it."""
+    name = principal.name.strip()
+    subject = principal.subject.strip()
+    if name and subject and name != subject:
+        label = f"{name} ({subject})"
+    else:
+        label = name or subject or "operator"
+    return label[:200]
 
 
 def _mark(incident, status: str, principal: Principal) -> None:

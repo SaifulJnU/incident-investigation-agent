@@ -87,7 +87,7 @@ def test_open_case_add_note_and_queue(client):
         json={"kind": "timeline", "summary": "payments-api 1.42.0 deployed"},
     )
     assert noted.status_code == 201
-    assert noted.json()["evidence"][0]["source"] == "oncall"
+    assert noted.json()["evidence"][0]["source"] == "On-call engineer (oncall)"
 
     queued = client.post(f"/api/incidents/{incident_id}/investigate", headers=headers)
     assert queued.status_code == 202

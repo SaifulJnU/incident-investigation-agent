@@ -150,6 +150,7 @@ export function IncidentSheet() {
   }
 
   const taken = latest ? timeTaken(latest.started_at, latest.finished_at) : "";
+  const requester = latest ? who(latest.requested_by_name, latest.requested_by) : "";
   const live = detail.status === "open" || detail.status === "investigating";
   const age = elapsed(detail.started_at, now);
   const opener = who(detail.opened_by_name, detail.opened_by);
@@ -249,6 +250,7 @@ export function IncidentSheet() {
         <h2>Incident note</h2>
         {latest?.provider ? (
           <p className="quiet">
+            {requester ? `${requester} requested this run. ` : ""}
             This run used {latest.provider} {latest.model_name} and is {latest.status}.
           </p>
         ) : (

@@ -32,6 +32,19 @@ function who(name: string, subject: string): string {
   return name || subject;
 }
 
+function lastActor(item: Incident): string {
+  if (item.status === "resolved") {
+    const name = who(item.resolved_by_name, item.resolved_by);
+    return name ? `Resolved by ${name}` : "";
+  }
+  if (item.status === "mitigated") {
+    const name = who(item.mitigated_by_name, item.mitigated_by);
+    return name ? `Mitigated by ${name}` : "";
+  }
+  const name = who(item.opened_by_name, item.opened_by);
+  return name ? `Opened by ${name}` : "";
+}
+
 export function IncidentList() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -188,7 +201,7 @@ export function IncidentList() {
         {!loading && cases.length === 0 ? <p className="quiet board-note">{empty}</p> : null}
         <ul className="case-list">
           {cases.map((item) => {
-            const opener = who(item.opened_by_name, item.opened_by);
+            const actor = lastActor(item);
             const live = item.status === "open" || item.status === "investigating";
             return (
               <li key={item.id}>
@@ -204,7 +217,7 @@ export function IncidentList() {
                       <span className="meta-service">{item.service}</span>
                       <span>{formatWhen(item.started_at)}</span>
                       <span>{elapsed(item.started_at)}</span>
-                      {opener ? <span>{opener}</span> : null}
+                      {actor ? <span>{actor}</span> : null}
                     </span>
                     {item.summary ? <span className="case-summary">{item.summary}</span> : null}
                   </span>
