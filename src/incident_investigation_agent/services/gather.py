@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
@@ -15,6 +16,74 @@ from incident_investigation_agent.infrastructure.connectors import (
 )
 
 QUERIES = ("timeout", "500")
+_EXTRA_QUERIES = 3
+_WORD = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}")
+_STOP = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "that",
+        "this",
+        "after",
+        "before",
+        "into",
+        "http",
+        "https",
+        "post",
+        "get",
+        "error",
+        "errors",
+        "incident",
+        "service",
+        "started",
+        "what",
+        "know",
+        "evidence",
+        "already",
+        "recorded",
+        "source",
+        "severity",
+        "sev1",
+        "sev2",
+        "sev3",
+        "sev4",
+        "case",
+        "during",
+        "while",
+        "when",
+        "have",
+        "been",
+        "were",
+        "was",
+        "not",
+        "but",
+        "its",
+        "our",
+        "their",
+        "they",
+        "api",
+        "info",
+        "warn",
+        "warning",
+        "request",
+        "status",
+        "unknown",
+        "about",
+        "over",
+        "under",
+        "than",
+        "then",
+        "also",
+        "just",
+        "only",
+        "still",
+        "looks",
+        "healthy",
+    }
+)
 
 # Connector status sentences, not words that can appear inside a real log line.
 _STATUS = (
@@ -55,9 +124,9 @@ class SearchBatch:
     findings: tuple[Finding, ...]
 
 
-def gather(settings: Settings, service: str | None) -> SearchBatch:
+def gather(settings: Settings, service: str | None, hint: str = "") -> SearchBatch:
     names = enabled_connectors(settings.app_env, settings.connectors)
-    jobs = _jobs(settings, service, names)
+    jobs = _jobs(settings, service, names, _queries(hint, service))
     if not jobs:
         return SearchBatch("No connectors are enabled.", ())
     with ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:
@@ -65,7 +134,25 @@ def gather(settings: Settings, service: str | None) -> SearchBatch:
     return _combine(blocks)
 
 
-def _jobs(settings: Settings, service: str | None, names: tuple[str, ...]):
+def _queries(hint: str, service: str | None) -> tuple[str, ...]:
+    """Always search timeout and 500, then a few words from the case itself."""
+    blocked = set(_STOP)
+    blocked.update(QUERIES)
+    if service:
+        blocked.add(service.lower())
+        blocked.update(part.lower() for part in re.split(r"[^A-Za-z0-9]+", service) if part)
+    extras: list[str] = []
+    for token in _WORD.findall(hint):
+        word = token.lower()
+        if word in blocked or word in extras:
+            continue
+        extras.append(word)
+        if len(extras) == _EXTRA_QUERIES:
+            break
+    return (*QUERIES, *extras)
+
+
+def _jobs(settings: Settings, service: str | None, names: tuple[str, ...], queries: tuple[str, ...]):
     jobs = []
     searchers = {
         "local_logs": ("search_logs", local_logs.search_local_logs),
@@ -78,7 +165,7 @@ def _jobs(settings: Settings, service: str | None, names: tuple[str, ...]):
             jobs.append(lambda: ("list_recent_commits", "", github.list_commits(settings, service)))
             continue
         label, function = searchers[name]
-        for query in QUERIES:
+        for query in queries:
             jobs.append(
                 lambda label=label, query=query, function=function: (
                     label,

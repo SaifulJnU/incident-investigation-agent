@@ -149,7 +149,7 @@ def run_once(factory: sessionmaker[Session], settings: Settings, investigate=Non
 
 
 def _investigate_with_agent(settings: Settings, store: DbCaseStore, prompt: str, service: str) -> str:
-    batch = gather(settings, service)
+    batch = gather(settings, service, prompt)
     _record_findings(store, batch.findings)
     note = _note_prompt(prompt, batch.text)
     return message_text(build_note_agent(settings)(note))

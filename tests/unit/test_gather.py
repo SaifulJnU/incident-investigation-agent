@@ -53,6 +53,26 @@ def test_empty_datadog_and_loki_searches_are_not_stored():
     assert summaries == ["checkout-api: ERROR timeout: value must be an integer"]
 
 
+def test_words_from_the_case_are_searched_too(tmp_path):
+    service = tmp_path / "checkout-api"
+    service.mkdir()
+    (service / "api.log").write_text(
+        "ERROR disk full on /data\nINFO request status=200\n",
+        encoding="utf-8",
+    )
+    settings = _settings(tmp_path, connectors=("local_logs",))
+    hint = "Checkout errors after the deploy. The disk filled on the data volume."
+    batch = gather(settings, "checkout-api", hint)
+    assert "search_logs timeout:" in batch.text
+    assert "search_logs disk:" in batch.text
+    assert "search_logs deploy:" in batch.text
+    assert "search_logs checkout:" not in batch.text
+    assert "search_logs errors:" not in batch.text
+    assert any("disk full" in item.summary for item in batch.findings)
+    missed = gather(settings, "checkout-api")
+    assert missed.findings == ()
+
+
 def test_a_miss_is_reported_and_not_stored():
     settings = _settings(Path("examples/logs"), connectors=("local_logs",))
     batch = gather(settings, "payments-api")
