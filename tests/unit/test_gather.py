@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from incident_investigation_agent.core.config import Settings
-from incident_investigation_agent.services.gather import _combine, gather
+from incident_investigation_agent.services.gather import Finding, SearchBatch, _combine, gather
 from incident_investigation_agent.services.investigation import _note_prompt
 
 
@@ -80,12 +80,48 @@ def test_a_miss_is_reported_and_not_stored():
     assert batch.findings == ()
 
 
-def test_note_prompt_drops_the_tool_instruction():
+def test_a_log_line_that_says_search_failed_is_kept():
+    batch = _combine(
+        [
+            (
+                "search_datadog",
+                "timeout",
+                "datadog service:checkout-api: ERROR payment search failed: handler returned no body",
+            ),
+            ("search_datadog", "500", "Datadog search failed: HTTP 401."),
+            (
+                "search_loki",
+                "timeout",
+                "No Loki lines matched 'timeout' for service=checkout-api during the last 60 minutes.",
+            ),
+        ]
+    )
+    summaries = [item.summary for item in batch.findings]
+    assert summaries == [
+        "datadog service:checkout-api: ERROR payment search failed: handler returned no body"
+    ]
+    assert batch.unchecked == ("Datadog search failed: HTTP 401.",)
+    assert batch.misses == ("search_loki timeout",)
+
+
+def test_note_prompt_leads_with_each_match_once():
     prompt = "Incident: Checkout\nStart by calling search_logs. Do not write the incident note."
-    note = _note_prompt(prompt, "search_logs timeout:\napi.log:3: vault timeout")
+    batch = SearchBatch(
+        "search_logs timeout:\napi.log:3: vault timeout",
+        (
+            Finding("log", "api.log:3: vault timeout status=500", "api.log"),
+            Finding("log", "api.log:4: vault connection timed out", "api.log"),
+        ),
+        misses=("search_logs climbed",),
+        unchecked=("CloudWatch is not configured. Set CLOUDWATCH_LOG_GROUP_PREFIX.",),
+    )
+    note = _note_prompt(prompt, batch)
     assert "Start by calling search_logs" not in note
-    assert "vault timeout" in note
-    assert "Write the incident note" in note
+    assert note.count("vault timeout") == 1
+    assert "api.log:4: vault connection timed out" in note
+    assert note.index("vault timeout") < note.index("CloudWatch is not configured")
+    assert note.index("CloudWatch is not configured") < note.index("No match for search_logs climbed.")
+    assert note.endswith("Write the incident note from these lines.")
 
 
 def _settings(log_dir: Path, connectors: tuple[str, ...]) -> Settings:

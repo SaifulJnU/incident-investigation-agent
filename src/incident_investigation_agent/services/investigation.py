@@ -14,7 +14,7 @@ from incident_investigation_agent.db.models import Incident, InvestigationRun, u
 from incident_investigation_agent.db.session import database_ready
 from incident_investigation_agent.repositories.cases import DbCaseStore
 from incident_investigation_agent.services.agent import build_note_agent
-from incident_investigation_agent.services.gather import gather
+from incident_investigation_agent.services.gather import SearchBatch, gather
 from incident_investigation_agent.services.report import IncidentBrief, investigation_prompt, message_text
 
 log = logging.getLogger("incident_investigation_agent.worker")
@@ -151,7 +151,7 @@ def run_once(factory: sessionmaker[Session], settings: Settings, investigate=Non
 def _investigate_with_agent(settings: Settings, store: DbCaseStore, prompt: str, service: str) -> str:
     batch = gather(settings, service, prompt)
     _record_findings(store, batch.findings)
-    note = _note_prompt(prompt, batch.text)
+    note = _note_prompt(prompt, batch)
     return message_text(build_note_agent(settings)(note))
 
 
@@ -166,13 +166,22 @@ def _record_findings(store, findings) -> None:
         existing.add(summary)
 
 
-def _note_prompt(prompt: str, searches: str) -> str:
+def _note_prompt(prompt: str, batch: SearchBatch) -> str:
+    """One copy of each matching line, then what was not checked."""
     marker = "Start by calling search_logs."
     base = prompt.split(marker)[0].rstrip() if marker in prompt else prompt.rstrip()
-    return (
-        f"{base}\n\nSearches already completed:\n{searches}\n\n"
-        "Write the incident note from these searches."
-    )
+    parts = [base, "", "Matching lines:"]
+    if batch.findings:
+        parts.extend(item.summary for item in batch.findings)
+    else:
+        parts.append("No matching lines.")
+    if batch.unchecked:
+        parts.extend(["", "Sources that were not checked:"])
+        parts.extend(batch.unchecked)
+    if batch.misses:
+        parts.extend(["", "No match for " + ", ".join(batch.misses) + "."])
+    parts.extend(["", "Write the incident note from these lines."])
+    return "\n".join(parts)
 
 
 def _finish(

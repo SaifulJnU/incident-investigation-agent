@@ -86,6 +86,8 @@ _STOP = frozenset(
 )
 
 # Connector status sentences, not words that can appear inside a real log line.
+# "search failed" and "returned no" are real log phrases, so only the connector's
+# own sentence is matched.
 _STATUS = (
     "no lines matched",
     "log directory does not exist",
@@ -96,18 +98,27 @@ _STATUS = (
     "were not searched",
     "was not queried",
     "no service is set",
-    "search failed",
+    "cloudwatch search failed",
+    "datadog search failed",
+    "loki search failed",
     "commit list failed",
     "invalid service",
-    "returned no ",
+    "github returned no ",
+    "datadog returned no ",
     "has no repository",
     "no cloudwatch events matched",
     "no datadog logs matched",
     "no loki lines matched",
     "no commits on ",
-    "does not send",
     "must be a label",
     "must be an https",
+)
+_MISS = (
+    "no lines matched",
+    "no cloudwatch events matched",
+    "no datadog logs matched",
+    "no loki lines matched",
+    "no commits on ",
 )
 
 
@@ -122,6 +133,8 @@ class Finding:
 class SearchBatch:
     text: str
     findings: tuple[Finding, ...]
+    misses: tuple[str, ...] = ()
+    unchecked: tuple[str, ...] = ()
 
 
 def gather(settings: Settings, service: str | None, hint: str = "") -> SearchBatch:
@@ -180,18 +193,37 @@ def _combine(blocks: list[tuple[str, str, str]]) -> SearchBatch:
     lines: list[str] = []
     findings: list[Finding] = []
     seen: set[str] = set()
+    misses: list[str] = []
+    unchecked: list[str] = []
+    unchecked_seen: set[str] = set()
     for label, query, body in blocks:
         title = f"{label} {query}".strip()
         lines.append(f"{title}:")
         lines.append(body.strip() or "(empty)")
         kind = "change" if label == "list_recent_commits" else "log"
+        hits = 0
+        status = ""
         for raw in body.splitlines():
             summary = raw.strip()
-            if not summary or _status_line(summary) or summary in seen:
+            if not summary:
+                continue
+            if _status_line(summary):
+                status = status or summary
+                continue
+            hits += 1
+            if summary in seen:
                 continue
             seen.add(summary)
             findings.append(Finding(kind, summary, _source(label, summary)))
-    return SearchBatch("\n".join(lines), tuple(findings))
+        if hits:
+            continue
+        if status and not _miss_line(status):
+            if status not in unchecked_seen:
+                unchecked_seen.add(status)
+                unchecked.append(status)
+            continue
+        misses.append(title)
+    return SearchBatch("\n".join(lines), tuple(findings), tuple(misses), tuple(unchecked))
 
 
 def _status_line(line: str) -> bool:
@@ -199,6 +231,11 @@ def _status_line(line: str) -> bool:
     if not head:
         return True
     return any(part in head for part in _STATUS)
+
+
+def _miss_line(line: str) -> bool:
+    head = line.strip().lower()
+    return any(part in head for part in _MISS)
 
 
 def _source(label: str, summary: str) -> str:
