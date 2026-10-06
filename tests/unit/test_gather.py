@@ -17,6 +17,13 @@ def test_local_searches_run_together_and_keep_hits():
     assert len(summaries) == len(set(summaries))
 
 
+def test_a_timed_out_line_is_kept_with_the_timeout_search():
+    settings = _settings(Path("examples/logs"), connectors=("local_logs",))
+    batch = gather(settings, "checkout-api")
+    assert "search_logs timed out:" in batch.text
+    assert any("timed out" in item.summary and "vault.internal" in item.summary for item in batch.findings)
+
+
 def test_a_matching_line_that_says_must_be_is_kept(tmp_path):
     service = tmp_path / "checkout-api"
     service.mkdir()

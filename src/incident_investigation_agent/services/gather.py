@@ -15,7 +15,7 @@ from incident_investigation_agent.infrastructure.connectors import (
     loki,
 )
 
-QUERIES = ("timeout", "500")
+QUERIES = ("timeout", "timed out", "500")
 _EXTRA_QUERIES = 3
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}")
 _STOP = frozenset(
@@ -148,9 +148,10 @@ def gather(settings: Settings, service: str | None, hint: str = "") -> SearchBat
 
 
 def _queries(hint: str, service: str | None) -> tuple[str, ...]:
-    """Always search timeout and 500, then a few words from the case itself."""
+    """Always search timeout, timed out, and 500, then a few words from the case itself."""
     blocked = set(_STOP)
     blocked.update(QUERIES)
+    blocked.update(word for query in QUERIES for word in query.split())
     if service:
         blocked.add(service.lower())
         blocked.update(part.lower() for part in re.split(r"[^A-Za-z0-9]+", service) if part)
