@@ -17,7 +17,9 @@ from incident_investigation_agent.infrastructure.connectors import (
 
 QUERIES = ("timeout", "timed out", "500")
 _EXTRA_QUERIES = 3
+_EXTRA_VERSIONS = 2
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}")
+_VERSION = re.compile(r"\d+\.\d+\.\d+")
 _STOP = frozenset(
     {
         "the",
@@ -148,13 +150,24 @@ def gather(settings: Settings, service: str | None, hint: str = "") -> SearchBat
 
 
 def _queries(hint: str, service: str | None) -> tuple[str, ...]:
-    """Always search timeout, timed out, and 500, then a few words from the case itself."""
+    """Search timeout, timed out, and 500, a version named in the case, then a few of its words.
+
+    The version is kept even when it is written after the ordinary words. A deploy
+    line that only says ``version=1.42.0`` would otherwise be missed.
+    """
     blocked = set(_STOP)
     blocked.update(QUERIES)
     blocked.update(word for query in QUERIES for word in query.split())
     if service:
         blocked.add(service.lower())
         blocked.update(part.lower() for part in re.split(r"[^A-Za-z0-9]+", service) if part)
+    versions: list[str] = []
+    for token in _VERSION.findall(hint):
+        if token in versions:
+            continue
+        versions.append(token)
+        if len(versions) == _EXTRA_VERSIONS:
+            break
     extras: list[str] = []
     for token in _WORD.findall(hint):
         word = token.lower()
@@ -163,7 +176,7 @@ def _queries(hint: str, service: str | None) -> tuple[str, ...]:
         extras.append(word)
         if len(extras) == _EXTRA_QUERIES:
             break
-    return (*QUERIES, *extras)
+    return (*QUERIES, *versions, *extras)
 
 
 def _jobs(settings: Settings, service: str | None, names: tuple[str, ...], queries: tuple[str, ...]):

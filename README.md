@@ -24,7 +24,7 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 | Access | No token is 401. A service the token does not grant is 403. Another service's case is 404 |
 | Work split | The API returns immediately. A worker asks the model and writes the note |
 | Safety | The worker searches and records. It cannot commit, push, restart, or roll back |
-| Tests | 39 automated tests for access, connectors, the API, and the worker |
+| Tests | 52 automated tests for access, connectors, the API, and the worker |
 | Stack | Python, FastAPI, Postgres, Alembic, React |
 
 ## Run it

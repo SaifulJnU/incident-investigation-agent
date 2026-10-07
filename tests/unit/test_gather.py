@@ -80,6 +80,23 @@ def test_words_from_the_case_are_searched_too(tmp_path):
     assert missed.findings == ()
 
 
+def test_a_version_named_after_other_words_is_still_searched(tmp_path):
+    service = tmp_path / "checkout-api"
+    service.mkdir()
+    (service / "api.log").write_text(
+        "INFO deploy version=1.42.0\n",
+        encoding="utf-8",
+    )
+    settings = _settings(tmp_path, connectors=("local_logs",))
+    hint = "The error rate climbed after the rollout. Catalog still looks healthy. Version 1.42.0."
+    batch = gather(settings, "checkout-api", hint)
+    assert "search_logs rate:" in batch.text
+    assert "search_logs 1.42.0:" in batch.text
+    assert any("version=1.42.0" in item.summary for item in batch.findings)
+    without = gather(settings, "checkout-api", "The error rate climbed after the rollout.")
+    assert without.findings == ()
+
+
 def test_a_miss_is_reported_and_not_stored():
     settings = _settings(Path("examples/logs"), connectors=("local_logs",))
     batch = gather(settings, "payments-api")
