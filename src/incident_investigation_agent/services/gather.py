@@ -153,7 +153,8 @@ def _queries(hint: str, service: str | None) -> tuple[str, ...]:
     """Search timeout, timed out, and 500, a version named in the case, then a few of its words.
 
     The version is kept even when it is written after the ordinary words. A deploy
-    line that only says ``version=1.42.0`` would otherwise be missed.
+    line that only says ``version=1.42.0`` would otherwise be missed. A word ending
+    in "ed" or "ing" is shortened, so "deployed" matches a line that says "deploy".
     """
     blocked = set(_STOP)
     blocked.update(QUERIES)
@@ -171,12 +172,22 @@ def _queries(hint: str, service: str | None) -> tuple[str, ...]:
     extras: list[str] = []
     for token in _WORD.findall(hint):
         word = token.lower()
-        if word in blocked or word in extras:
+        folded = _fold(word)
+        chosen = word if folded in blocked else folded
+        if chosen in blocked or chosen in extras:
             continue
-        extras.append(word)
+        extras.append(chosen)
         if len(extras) == _EXTRA_QUERIES:
             break
     return (*QUERIES, *versions, *extras)
+
+
+def _fold(word: str) -> str:
+    """Use the shorter form, so a case that says "deployed" still matches "deploy"."""
+    for suffix in ("ing", "ed"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            return word[: -len(suffix)]
+    return word
 
 
 def _jobs(settings: Settings, service: str | None, names: tuple[str, ...], queries: tuple[str, ...]):

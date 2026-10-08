@@ -80,6 +80,20 @@ def test_words_from_the_case_are_searched_too(tmp_path):
     assert missed.findings == ()
 
 
+def test_deployed_in_the_case_finds_a_line_that_says_deploy(tmp_path):
+    service = tmp_path / "checkout-api"
+    service.mkdir()
+    (service / "api.log").write_text("INFO deploy finished\n", encoding="utf-8")
+    settings = _settings(tmp_path, connectors=("local_logs",))
+    hint = "A posted change was deployed."
+    batch = gather(settings, "checkout-api", hint)
+    assert "search_logs deploy:" in batch.text
+    assert "search_logs deployed:" not in batch.text
+    assert "search_logs posted:" in batch.text
+    assert "search_logs post:" not in batch.text
+    assert any("deploy finished" in item.summary for item in batch.findings)
+
+
 def test_a_version_named_after_other_words_is_still_searched(tmp_path):
     service = tmp_path / "checkout-api"
     service.mkdir()
