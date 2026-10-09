@@ -700,6 +700,13 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.fact-when {
+  display: block;
+  color: var(--slate);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
 .summary {
   font-family: "Literata", "Iowan Old Style", Georgia, serif;
   font-size: 1.08rem;
@@ -792,6 +799,27 @@ button:disabled {
 
 .brief h2 {
   margin-bottom: 0.45rem;
+}
+
+.earlier {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.15rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.earlier h3 {
+  margin: 0;
+  color: var(--slate);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.earlier .run + .run {
+  padding-top: 0.95rem;
+  border-top: 1px solid var(--line);
 }
 
 .taken {

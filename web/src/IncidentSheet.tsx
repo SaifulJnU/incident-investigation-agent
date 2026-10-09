@@ -9,6 +9,7 @@ import {
   type Evidence,
   type EvidenceKind,
   type IncidentDetail,
+  type Run,
 } from "./api";
 import { elapsed, formatWhen, timeTaken, SEVERITY_LABEL, STATUS_LABEL } from "./format";
 
@@ -99,7 +100,6 @@ export function IncidentSheet() {
     );
   }
 
-  const latest = detail.runs[0];
   const running = detail.runs.some((run) => run.status === "queued" || run.status === "running");
   const timeline = detail.evidence.filter((item) => item.kind === "symptom" || item.kind === "timeline" || item.kind === "change");
   const hypotheses = detail.evidence.filter((item) => item.kind === "hypothesis");
@@ -149,8 +149,6 @@ export function IncidentSheet() {
     }
   }
 
-  const taken = latest ? timeTaken(latest.started_at, latest.finished_at) : "";
-  const requester = latest ? who(latest.requested_by_name, latest.requested_by) : "";
   const live = detail.status === "open" || detail.status === "investigating";
   const age = elapsed(detail.started_at, now);
   const opener = who(detail.opened_by_name, detail.opened_by);
@@ -193,13 +191,19 @@ export function IncidentSheet() {
         {mitigator ? (
           <div>
             <dt>Mitigated by</dt>
-            <dd>{mitigator}</dd>
+            <dd>
+              {mitigator}
+              {detail.mitigated_at ? <span className="fact-when">{formatWhen(detail.mitigated_at)}</span> : null}
+            </dd>
           </div>
         ) : null}
         {resolver ? (
           <div>
             <dt>Resolved by</dt>
-            <dd>{resolver}</dd>
+            <dd>
+              {resolver}
+              {detail.resolved_at ? <span className="fact-when">{formatWhen(detail.resolved_at)}</span> : null}
+            </dd>
           </div>
         ) : null}
       </dl>
@@ -248,21 +252,21 @@ export function IncidentSheet() {
       </div>
       <section className="brief">
         <h2>Incident note</h2>
-        {latest?.provider ? (
-          <p className="quiet">
-            {requester ? `${requester} requested this run. ` : ""}
-            This run used {latest.provider} {latest.model_name} and is {latest.status}.
-          </p>
-        ) : (
+        {detail.runs.length === 0 ? (
           <p className="quiet">No investigation yet.</p>
+        ) : (
+          <>
+            <RunRecord run={detail.runs[0]} now={now} />
+            {detail.runs.length > 1 ? (
+              <div className="earlier">
+                <h3>Earlier notes</h3>
+                {detail.runs.slice(1).map((run) => (
+                  <RunRecord key={run.id} run={run} now={now} />
+                ))}
+              </div>
+            ) : null}
+          </>
         )}
-        {latest?.error ? (
-          <p className="problem" role="alert">
-            {latest.error}
-          </p>
-        ) : null}
-        {latest?.report ? <div className="report">{latest.report}</div> : null}
-        {taken ? <p className="taken">Time taken: {taken}</p> : null}
       </section>
       <form onSubmit={onNote} className="intake note-form">
         <h2>Add a note</h2>
@@ -285,6 +289,33 @@ export function IncidentSheet() {
         </button>
       </form>
     </main>
+  );
+}
+
+function RunRecord({ run, now }: { run: Run; now: number }) {
+  const taken = timeTaken(run.started_at, run.finished_at);
+  const requester = who(run.requested_by_name, run.requested_by);
+  const live = run.status === "queued" || run.status === "running";
+  const runningFor = live && run.started_at ? elapsed(run.started_at, now) : "";
+  const when = formatWhen(run.finished_at || run.started_at || run.created_at);
+  return (
+    <article className="run">
+      <p className="quiet">
+        {requester ? `${requester} requested this run. ` : ""}
+        {run.provider
+          ? `This run used ${run.provider} ${run.model_name} and is ${run.status}.`
+          : `This run is ${run.status}.`}
+        {runningFor ? ` Running for ${runningFor}.` : ""}
+        {when ? ` ${when}.` : ""}
+      </p>
+      {run.error ? (
+        <p className="problem" role="alert">
+          {run.error}
+        </p>
+      ) : null}
+      {run.report ? <div className="report">{run.report}</div> : null}
+      {taken ? <p className="taken">Time taken: {taken}</p> : null}
+    </article>
   );
 }
 

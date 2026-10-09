@@ -51,8 +51,10 @@ export function IncidentList() {
   const filter = selectedStatus(params.get("status"));
   const [cases, setCases] = useState<Incident[]>([]);
   const [counts, setCounts] = useState<Record<CaseStatus | "all", number> | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [service, setService] = useState("");
@@ -61,18 +63,26 @@ export function IncidentList() {
   const [startedAt, setStartedAt] = useState("");
 
   useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     let gone = false;
     setLoading(true);
+    setListError(null);
     Promise.all([listIncidents(filter === "all" ? undefined : filter), incidentCounts()])
       .then(([rows, totals]) => {
         if (!gone) {
           setCases(rows);
           setCounts(totals);
+          setListError(null);
         }
       })
       .catch((err: unknown) => {
         if (!gone) {
-          setError(err instanceof Error ? err.message : "Could not load cases.");
+          setCases([]);
+          setListError(err instanceof Error ? err.message : "Could not load cases.");
         }
       })
       .finally(() => {
@@ -98,7 +108,7 @@ export function IncidentList() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
-    setError(null);
+    setFormError(null);
     try {
       const created = await createIncident({
         title,
@@ -109,7 +119,7 @@ export function IncidentList() {
       });
       navigate(`/incidents/${created.id}`);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not open the case.");
+      setFormError(err instanceof Error ? err.message : "Could not open the case.");
       setSaving(false);
     }
   }
@@ -173,9 +183,9 @@ export function IncidentList() {
             </button>
           </div>
         </form>
-        {error ? (
+        {formError ? (
           <p className="problem" role="alert">
-            {error}
+            {formError}
           </p>
         ) : null}
       </section>
@@ -198,34 +208,41 @@ export function IncidentList() {
           </div>
         </div>
         {loading ? <p className="quiet board-note">Loading cases.</p> : null}
-        {!loading && cases.length === 0 ? <p className="quiet board-note">{empty}</p> : null}
-        <ul className="case-list">
-          {cases.map((item) => {
-            const actor = lastActor(item);
-            const live = item.status === "open" || item.status === "investigating";
-            return (
-              <li key={item.id}>
-                <Link to={`/incidents/${item.id}`} className="case-row">
-                  <span className={`rail ${item.severity} ${live ? "live" : ""}`} aria-hidden="true" />
-                  <span className="case-main">
-                    <span className="case-topline">
-                      <span className="case-title">{item.title}</span>
-                      <span className={`chip ${item.status}`}>{STATUS_LABEL[item.status]}</span>
+        {!loading && listError ? (
+          <p className="problem board-note" role="alert">
+            {listError}
+          </p>
+        ) : null}
+        {!loading && !listError && cases.length === 0 ? <p className="quiet board-note">{empty}</p> : null}
+        {!loading && !listError ? (
+          <ul className="case-list">
+            {cases.map((item) => {
+              const actor = lastActor(item);
+              const live = item.status === "open" || item.status === "investigating";
+              return (
+                <li key={item.id}>
+                  <Link to={`/incidents/${item.id}`} className="case-row">
+                    <span className={`rail ${item.severity} ${live ? "live" : ""}`} aria-hidden="true" />
+                    <span className="case-main">
+                      <span className="case-topline">
+                        <span className="case-title">{item.title}</span>
+                        <span className={`chip ${item.status}`}>{STATUS_LABEL[item.status]}</span>
+                      </span>
+                      <span className="case-meta">
+                        <span className={`chip ${item.severity}`}>{SEVERITY_LABEL[item.severity]}</span>
+                        <span className="meta-service">{item.service}</span>
+                        <span>{formatWhen(item.started_at)}</span>
+                        <span>{elapsed(item.started_at, now)}</span>
+                        {actor ? <span>{actor}</span> : null}
+                      </span>
+                      {item.summary ? <span className="case-summary">{item.summary}</span> : null}
                     </span>
-                    <span className="case-meta">
-                      <span className={`chip ${item.severity}`}>{SEVERITY_LABEL[item.severity]}</span>
-                      <span className="meta-service">{item.service}</span>
-                      <span>{formatWhen(item.started_at)}</span>
-                      <span>{elapsed(item.started_at)}</span>
-                      {actor ? <span>{actor}</span> : null}
-                    </span>
-                    {item.summary ? <span className="case-summary">{item.summary}</span> : null}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
       </section>
     </main>
   );
