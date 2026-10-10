@@ -111,6 +111,21 @@ def test_a_version_named_after_other_words_is_still_searched(tmp_path):
     assert without.findings == ()
 
 
+def test_a_status_code_named_after_other_words_is_still_searched(tmp_path):
+    service = tmp_path / "checkout-api"
+    service.mkdir()
+    (service / "api.log").write_text("ERROR upstream status=503\n", encoding="utf-8")
+    settings = _settings(tmp_path, connectors=("local_logs",))
+    hint = "The error rate climbed after the rollout. Catalog still looks healthy. HTTP 503s."
+    batch = gather(settings, "checkout-api", hint)
+    assert "search_logs 503:" in batch.text
+    assert "search_logs 503s:" not in batch.text
+    assert batch.text.count("search_logs 500:") == 1
+    assert any("status=503" in item.summary for item in batch.findings)
+    without = gather(settings, "checkout-api", "The error rate climbed after the rollout.")
+    assert without.findings == ()
+
+
 def test_a_miss_is_reported_and_not_stored():
     settings = _settings(Path("examples/logs"), connectors=("local_logs",))
     batch = gather(settings, "payments-api")

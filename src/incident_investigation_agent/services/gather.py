@@ -18,8 +18,10 @@ from incident_investigation_agent.infrastructure.connectors import (
 QUERIES = ("timeout", "timed out", "500")
 _EXTRA_QUERIES = 3
 _EXTRA_VERSIONS = 2
+_EXTRA_CODES = 2
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9_-]{2,}")
 _VERSION = re.compile(r"\d+\.\d+\.\d+")
+_STATUS_CODE = re.compile(r"(?<!\d)[1-5]\d{2}(?!\d)")
 _STOP = frozenset(
     {
         "the",
@@ -150,11 +152,13 @@ def gather(settings: Settings, service: str | None, hint: str = "") -> SearchBat
 
 
 def _queries(hint: str, service: str | None) -> tuple[str, ...]:
-    """Search timeout, timed out, and 500, a version named in the case, then a few of its words.
+    """Search timeout, timed out, and 500, then a version or status code named in the case.
 
-    The version is kept even when it is written after the ordinary words. A deploy
-    line that only says ``version=1.42.0`` would otherwise be missed. A word ending
-    in "ed" or "ing" is shortened, so "deployed" matches a line that says "deploy".
+    The version and the status code are kept even when they are written after the
+    ordinary words. A line that only says ``status=503`` would otherwise be missed.
+    ``500`` is already a default search, so a case that says ``500s`` does not
+    search it twice. A word ending in "ed" or "ing" is shortened, so "deployed"
+    matches a line that says "deploy".
     """
     blocked = set(_STOP)
     blocked.update(QUERIES)
@@ -169,6 +173,13 @@ def _queries(hint: str, service: str | None) -> tuple[str, ...]:
         versions.append(token)
         if len(versions) == _EXTRA_VERSIONS:
             break
+    codes: list[str] = []
+    for token in _STATUS_CODE.findall(hint):
+        if token in codes or token in QUERIES:
+            continue
+        codes.append(token)
+        if len(codes) == _EXTRA_CODES:
+            break
     extras: list[str] = []
     for token in _WORD.findall(hint):
         word = token.lower()
@@ -179,7 +190,7 @@ def _queries(hint: str, service: str | None) -> tuple[str, ...]:
         extras.append(chosen)
         if len(extras) == _EXTRA_QUERIES:
             break
-    return (*QUERIES, *versions, *extras)
+    return (*QUERIES, *versions, *codes, *extras)
 
 
 def _fold(word: str) -> str:
