@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case file system design</title>
+<style>
+  :root {
+    --ink: #0f172a; --muted: #475569; --soft: #64748b; --line: #64748b; --rule: #e2e8f0;
+    --user-bg: #eff6ff; --user-bd: #93c5fd; --user-ac: #2563eb;
+    --web-bg: #ecfeff;  --web-bd: #67e8f9;  --web-ac: #0e7490;
+    --api-bg: #f0fdf4;  --api-bd: #86efac;  --api-ac: #15803d;
+    --db-bg: #eef2ff;   --db-bd: #a5b4fc;   --db-ac: #4338ca;
+    --wk-bg: #f1f5f9;   --wk-bd: #cbd5e1;   --wk-ac: #334155;
+    --pl-bg: #f5f3ff;   --pl-bd: #c4b5fd;   --pl-ac: #6d28d9;
+    --fo-bg: #f0f9ff;   --fo-bd: #7dd3fc;   --fo-ac: #0369a1;
+    --tr-bg: #fffbeb;   --tr-bd: #fcd34d;   --tr-ac: #b45309;
+    --md-bg: #fff7ed;   --md-bd: #fdba74;   --md-ac: #c2410c;
+    --er-bg: #fef2f2;   --er-bd: #fca5a5;   --er-ac: #b91c1c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #ffffff; color: var(--ink); font-family: Inter, "Segoe UI", Arial, sans-serif; width: 1440px; }
+  .page { padding: 34px 40px 26px; }
+
+  header { text-align: center; margin-bottom: 22px; }
+  .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--md-ac); }
+  h1 { font-size: 34px; font-weight: 800; letter-spacing: -.02em; margin: 6px 0 8px; }
+  .lede { font-size: 16px; color: var(--muted); }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  .diagram { position: relative; width: 1360px; height: 812px; }
+  .diagram > svg { position: absolute; inset: 0; overflow: visible; }
+
+  .box { position: absolute; border: 1.5px solid; border-radius: 12px; padding: 12px 12px 11px; text-align: center;
+         display: flex; flex-direction: column; align-items: center; box-shadow: 0 1px 2px rgba(15,23,42,.06); }
+  .box h3 { font-size: 15.5px; font-weight: 700; line-height: 1.2; }
+  .box h3 small { display: block; font-size: 12px; font-weight: 600; color: var(--soft); margin-top: 1px; }
+  .ico { width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center; margin: 9px 0 8px; color: #fff; }
+  .ico svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .box p { font-size: 13px; line-height: 1.42; color: #1e293b; }
+  .box p + p { margin-top: 4px; }
+  .box code, .card code { font-family: "DejaVu Sans Mono", Consolas, monospace; font-size: 11.5px; background: rgba(255,255,255,.75);
+         border: 1px solid rgba(15,23,42,.1); border-radius: 4px; padding: 0 4px; white-space: nowrap; }
+  .tech { margin-top: auto; width: 100%; border: 1.3px dashed; border-radius: 8px; padding: 6px 6px; font-size: 12px;
+          line-height: 1.4; color: #334155; background: rgba(255,255,255,.6); }
+  .tech b { font-weight: 700; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin: 4px 0 2px; }
+  .chip { font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 2px 8px; background: #fff; border: 1px solid; white-space: nowrap; }
+
+  .user { background: var(--user-bg); border-color: var(--user-bd); } .user .ico { background: var(--user-ac); } .user .tech { border-color: var(--user-bd); }
+  .web  { background: var(--web-bg);  border-color: var(--web-bd); }  .web .ico  { background: var(--web-ac); }  .web .tech  { border-color: var(--web-bd); }
+  .api  { background: var(--api-bg);  border-color: var(--api-bd); }  .api .ico  { background: var(--api-ac); }  .api .tech  { border-color: var(--api-bd); }
+  .db   { background: var(--db-bg);   border-color: var(--db-bd); }   .db .ico   { background: var(--db-ac); }   .db .tech   { border-color: var(--db-bd); }
+  .wk   { background: var(--wk-bg);   border-color: var(--wk-bd); }   .wk .ico   { background: var(--wk-ac); }   .wk .tech   { border-color: var(--wk-bd); }
+  .pl   { background: var(--pl-bg);   border-color: var(--pl-bd); }   .pl .ico   { background: var(--pl-ac); }   .pl .tech   { border-color: var(--pl-bd); }
+  .fo   { background: var(--fo-bg);   border-color: var(--fo-bd); }   .fo .ico   { background: var(--fo-ac); }   .fo .tech   { border-color: var(--fo-bd); }
+  .tr   { background: var(--tr-bg);   border-color: var(--tr-bd); }   .tr .ico   { background: var(--tr-ac); }   .tr .tech   { border-color: var(--tr-bd); }
+  .md   { background: var(--md-bg);   border-color: var(--md-bd); }   .md .ico   { background: var(--md-ac); }   .md .tech   { border-color: var(--md-bd); }
+
+  .codes { display: grid; grid-template-columns: auto 1fr; gap: 2px 7px; text-align: left; font-size: 12.5px; margin: 2px 0 4px; }
+  .codes span:nth-child(odd) { font-weight: 700; color: var(--er-ac); }
+  .tables { display: flex; gap: 6px; justify-content: center; margin: 2px 0 7px; }
+  .table { font-family: "DejaVu Sans Mono", monospace; font-size: 11.5px; font-weight: 600; background: #fff; border: 1px solid var(--db-bd);
+           border-radius: 6px; padding: 4px 7px; color: var(--db-ac); }
+  .table.q { background: var(--db-ac); color: #fff; border-color: var(--db-ac); }
+  .src { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; margin: 3px 0 7px; }
+  .srcgrp { background: #fff; border: 1px solid var(--fo-bd); border-radius: 8px; padding: 6px 6px 7px; }
+  .srcgrp .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--fo-ac); margin-bottom: 4px; }
+  .srcgrp .chip { border-color: var(--fo-bd); color: #0c4a6e; display: inline-block; margin: 2px 1px; }
+
+  .diamond { position: absolute; width: 104px; height: 104px; transform: rotate(45deg); background: #fef9c3; border: 1.8px solid #eab308; border-radius: 10px; }
+  .dlabel { position: absolute; width: 120px; text-align: center; font-size: 12.5px; font-weight: 700; color: #854d0e; line-height: 1.25; }
+  .err { position: absolute; background: var(--er-bg); border: 1.5px solid var(--er-bd); border-left: 5px solid var(--er-ac); border-radius: 10px;
+         padding: 8px 10px; text-align: center; font-size: 12.5px; color: #7f1d1d; line-height: 1.35; }
+  .err b { display: block; font-size: 14px; color: var(--er-ac); }
+
+  .lane { position: absolute; border: 2px dashed #94a3b8; border-radius: 16px; background: rgba(248,250,252,.7); }
+  .lanetag { position: absolute; background: #fff; border: 1.5px solid #cbd5e1; border-radius: 999px; padding: 4px 13px; font-size: 13px; font-weight: 700; color: #334155; }
+  .lanetag span { font-weight: 500; color: var(--soft); }
+
+  .n { position: absolute; width: 22px; height: 22px; border-radius: 50%; background: #1d4ed8; color: #fff; font-size: 12px; font-weight: 700;
+       display: grid; place-items: center; box-shadow: 0 0 0 3px #fff; }
+  .alabel { position: absolute; font-size: 12px; line-height: 1.3; color: #1e293b; text-align: center; }
+  .alabel b { font-weight: 700; }
+  .alabel.ok { color: #15803d; font-weight: 700; }
+  .alabel.no { color: var(--er-ac); font-weight: 700; }
+  .pill { position: absolute; background: #fff; border: 1.5px solid #cbd5e1; border-radius: 999px; padding: 5px 14px; font-size: 13px; color: #1e293b; white-space: nowrap; }
+  .pill b { font-weight: 700; }
+
+  .band { margin-top: 18px; background: #0f172a; color: #e2e8f0; border-radius: 12px; padding: 13px 20px; display: flex; align-items: center; gap: 14px; font-size: 15px; }
+  .band svg { width: 22px; height: 22px; flex: none; fill: none; stroke: #fbbf24; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .band b { color: #fff; }
+
+  .cards { display: grid; grid-template-columns: 1.05fr 1fr 1.25fr 1fr; gap: 14px; margin-top: 16px; }
+  .card { border: 1.5px solid var(--rule); border-radius: 12px; padding: 14px 15px; background: #fff; }
+  .card h4 { display: flex; align-items: center; gap: 9px; font-size: 15.5px; font-weight: 700; padding-bottom: 9px; margin-bottom: 9px; border-bottom: 1px solid var(--rule); }
+  .card h4 i { font-style: normal; width: 23px; height: 23px; border-radius: 50%; background: #1d4ed8; color: #fff; font-size: 12.5px; display: grid; place-items: center; }
+  ol.steps { list-style: none; counter-reset: s; }
+  ol.steps li { counter-increment: s; display: grid; grid-template-columns: 20px 1fr; gap: 6px; font-size: 13px; line-height: 1.4; margin-bottom: 5px; color: #1e293b; }
+  ol.steps li::before { content: counter(s); width: 18px; height: 18px; border-radius: 50%; background: #e0e7ff; color: #3730a3; font-size: 11px; font-weight: 700; display: grid; place-items: center; margin-top: 1px; }
+  table.tt { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.tt th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--soft); padding: 0 0 5px; font-weight: 700; }
+  table.tt td { padding: 4px 0; border-top: 1px solid #f1f5f9; vertical-align: top; line-height: 1.35; }
+  table.tt td:first-child { color: var(--muted); width: 38%; padding-right: 8px; }
+  table.tt td:last-child { font-weight: 600; }
+  .dec { display: grid; grid-template-columns: 28px 1fr; gap: 8px; margin-bottom: 7px; }
+  .dec .di { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; }
+  .dec .di svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .dec h5 { font-size: 13px; font-weight: 700; line-height: 1.3; }
+  .dec p { font-size: 12.5px; line-height: 1.38; color: var(--muted); }
+  .meas { list-style: none; }
+  .meas li { font-size: 13px; line-height: 1.4; padding-left: 15px; position: relative; margin-bottom: 7px; color: #1e293b; }
+  .meas li::before { content: ""; position: absolute; left: 0; top: 7px; width: 7px; height: 7px; border-radius: 2px; background: #16a34a; }
+  .meas li b { font-weight: 700; }
+  footer { margin-top: 16px; text-align: center; font-size: 13px; color: var(--soft); }
+  footer code { font-family: "DejaVu Sans Mono", monospace; font-size: 12px; color: #334155; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <div class="eyebrow">System design</div>
+  <h1>Architecture: Case file, an AI incident investigator</h1>
+  <p class="lede">The alert tool still pages. Case file searches <b>CloudWatch, Datadog, Loki and GitHub in parallel</b> and writes an evidence-backed incident note. <b>Read-only by design.</b></p>
+</header>
+
+<div class="diagram">
+  <div class="lane" style="left:0; top:458px; width:1360px; height:318px;"></div>
+  <!-- connectors and arrows -->
+  <svg width="1360" height="812" viewBox="0 0 1360 812">
+    <defs>
+      <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#475569"/></marker>
+      <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#15803d"/></marker>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#b91c1c"/></marker>
+      <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#4338ca"/></marker>
+    </defs>
+    <g fill="none" stroke="#475569" stroke-width="1.8">
+      <!-- row 1 -->
+      <path d="M142 128 H 216" marker-end="url(#a)"/>
+      <path d="M412 128 H 486" marker-end="url(#a)"/>
+      <path d="M486 200 H 416" stroke-dasharray="5 4" marker-end="url(#a)"/>
+      <path d="M722 128 H 776" marker-end="url(#a)"/>
+      <path d="M924 128 H 986" stroke="#15803d" marker-end="url(#ag)"/>
+      <path d="M850 202 V 296" stroke="#b91c1c" marker-end="url(#ar)"/>
+      <!-- claim: postgres down to worker -->
+      <path d="M1060 272 V 418 H 123 V 512" stroke="#4338ca" stroke-width="2" marker-end="url(#ab)"/>
+      <!-- pipeline -->
+      <path d="M229 628 H 251" marker-end="url(#a)"/>
+      <path d="M474 628 H 496" marker-end="url(#a)"/>
+      <path d="M829 628 H 851" marker-end="url(#a)"/>
+      <path d="M1084 628 H 1106" marker-end="url(#a)"/>
+      <!-- write back -->
+      <path d="M1250 512 V 276" stroke="#4338ca" stroke-width="2" marker-end="url(#ab)"/>
+    </g>
+  </svg>
+
+  <!-- swimlane for worker -->
+  <div class="lanetag" style="left:160px; top:446px;">Worker pipeline <span>· async, outside the request · <code style="font-size:11px">python -m …worker</code></span></div>
+  <div class="lanetag" style="left:880px; top:446px;"><span>Repeats every second while runs are queued</span></div>
+
+  <!-- ROW 1 -->
+  <div class="box user" style="left:0; top:24px; width:142px; height:248px;">
+    <h3>On-call engineer</h3>
+    <div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></svg></div>
+    <p>Opens a case for <b>one service</b> and clicks Investigate</p>
+    <div class="tech">Severity <b style="white-space:nowrap">sev1–sev4</b><br>Paging stays in the alert tool</div>
+  </div>
+
+  <div class="box web" style="left:216px; top:24px; width:196px; height:248px;">
+    <h3>Console<small>React + nginx</small></h3>
+    <div class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+    <p>Signs in, opens cases, shows the note and the evidence</p>
+    <p>Proxies <code>/api</code>, sends the bearer token</p>
+    <div class="tech"><b>React · Vite · nginx</b></div>
+  </div>
+
+  <div class="box api" style="left:486px; top:24px; width:236px; height:248px;">
+    <h3>API<small>FastAPI · never calls the model</small></h3>
+    <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
+    <div class="codes">
+      <span>401</span><span>no or expired token</span>
+      <span>403</span><span>service not in the grant</span>
+      <span>404</span><span>another service's case</span>
+    </div>
+    <div class="tech">JWT via <b>OIDC + PKCE</b> (JWKS, RS256)<br>Local demo: dev sign-in</div>
+  </div>
+
+  <div class="diamond" style="left:798px; top:76px;"></div>
+  <div class="dlabel" style="left:790px; top:106px;">Run already<br>active, or case<br>resolved?</div>
+
+  <div class="box db" style="left:990px; top:24px; width:370px; height:248px;">
+    <h3>PostgreSQL 16<small>Case record + job queue in one database</small></h3>
+    <div class="ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg></div>
+    <div class="tables"><span class="table">incidents</span><span class="table">evidence</span><span class="table q">investigation_runs</span></div>
+    <p>The run row is the queue: <b>queued → running → completed / failed</b></p>
+    <div class="tech">Partial unique index: <b>one active run per case</b><br>Alembic migrations run on API start</div>
+  </div>
+
+  <div class="err" style="left:770px; top:300px; width:160px;"><b>409 Conflict</b>No second run, no work on a resolved case</div>
+
+  <!-- arrow labels row 1 -->
+  <div class="n" style="left:168px; top:96px;">1</div>
+  <div class="alabel" style="left:144px; top:136px; width:70px;">Investigate</div>
+  <div class="n" style="left:438px; top:96px;">2</div>
+  <div class="alabel" style="left:414px; top:136px; width:72px;"><b>POST</b><br>/investigate</div>
+  <div class="alabel" style="left:414px; top:208px; width:72px;">polls every<br><b>2 s</b></div>
+  <div class="n" style="left:738px; top:96px;">3</div>
+  <div class="alabel ok" style="left:930px; top:98px; width:54px;">No</div>
+  <div class="n" style="left:944px; top:136px;">4</div>
+  <div class="alabel" style="left:922px; top:162px; width:68px;">queue run<br><b>202</b> at once</div>
+  <div class="alabel no" style="left:858px; top:232px; width:40px;">Yes</div>
+
+  <!-- claim pill and write-back label -->
+  <div class="n" style="left:410px; top:407px;">5</div>
+  <div class="pill" style="left:440px; top:402px;"><b>Claim up to 4 queued runs</b> · <code>FOR UPDATE SKIP LOCKED</code> · workers never take the same run</div>
+  <div class="n" style="left:1239px; top:292px;">10</div>
+  <div class="alabel" style="left:1262px; top:300px; width:98px; text-align:left;"><b>Save note</b><br>+ new evidence<br>status completed<br>or failed</div>
+
+  <!-- ROW 2: pipeline -->
+  <div class="box wk" style="left:18px; top:512px; width:211px; height:244px;">
+    <h3>Worker</h3>
+    <div class="ico"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg></div>
+    <p>Builds the case brief: title, service, severity, what we know, evidence so far</p>
+    <div class="tech">Reaper: a run stuck past <b>20 min</b> is failed and the case reopens</div>
+  </div>
+
+  <div class="box pl" style="left:251px; top:512px; width:223px; height:244px;">
+    <h3>Query planner</h3>
+    <div class="ico"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6M11 8v6"/></svg></div>
+    <div class="chips"><span class="chip" style="border-color:var(--pl-bd)">timeout</span><span class="chip" style="border-color:var(--pl-bd)">timed out</span><span class="chip" style="border-color:var(--pl-bd)">500</span></div>
+    <p>plus words from the brief:</p>
+    <div class="chips"><span class="chip" style="border-color:var(--pl-bd);color:var(--pl-ac)">2 versions</span><span class="chip" style="border-color:var(--pl-bd);color:var(--pl-ac)">2 status codes</span><span class="chip" style="border-color:var(--pl-bd);color:var(--pl-ac)">3 keywords</span></div>
+    <div class="tech">Stop words dropped, <b>deployed → deploy</b></div>
+  </div>
+
+  <div class="box fo" style="left:496px; top:512px; width:333px; height:244px;">
+    <h3>Parallel fan-out<small>every source × every query, up to 8 at once</small></h3>
+    <div class="ico" style="margin:7px 0 5px"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div>
+    <div class="src">
+      <div class="srcgrp"><div class="lbl">Production</div><span class="chip">CloudWatch</span><span class="chip">Datadog</span><span class="chip">Loki</span><span class="chip">GitHub commits</span></div>
+      <div class="srcgrp"><div class="lbl">Local</div><span class="chip">Log folder</span><span class="chip">Floci</span><div style="font-size:11px;color:var(--soft);margin-top:3px;line-height:1.3">AWS emulator stands in for CloudWatch</div></div>
+    </div>
+    <div class="tech"><b>Read-only</b>, scoped to the case's service. Set by <code>CONNECTORS</code></div>
+  </div>
+
+  <div class="box tr" style="left:851px; top:512px; width:233px; height:244px;">
+    <h3>Evidence triage</h3>
+    <div class="ico"><svg viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"/></svg></div>
+    <p>Dedupes lines across sources and stores each new fact as <b>log</b> or <b>change</b> evidence</p>
+    <div class="tech">Missing credentials become <b>"not checked"</b>, never a silent skip</div>
+  </div>
+
+  <div class="box md" style="left:1106px; top:512px; width:236px; height:244px;">
+    <h3>Note model<small>one call · no tools · ≤180 tokens</small></h3>
+    <div class="ico"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></div>
+    <p>Impact, leading cause, alternative, confidence, next checks, safest mitigation</p>
+    <div class="tech">Local <b>Ollama</b> · Prod <b>Amazon Bedrock</b> (Claude Sonnet 4.6) via <b>Strands</b></div>
+  </div>
+
+  <div class="n" style="left:229px; top:588px;">6</div>
+  <div class="n" style="left:474px; top:588px;">7</div>
+  <div class="n" style="left:829px; top:588px;">8</div>
+  <div class="n" style="left:1084px; top:588px;">9</div>
+</div>
+
+<div class="band">
+  <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+  <span><b>Read-only by design.</b> The worker searches and records. It cannot commit, push, restart, or roll back. Any future write would sit behind a human approval step.</span>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <h4><i>1</i>Request lifecycle</h4>
+    <ol class="steps">
+      <li>Engineer opens a case for one service and clicks Investigate</li>
+      <li>API checks the token and the service grant</li>
+      <li>A second active run or a resolved case gets 409</li>
+      <li>API queues a run and returns 202 immediately</li>
+      <li>A worker claims it, skipping locked rows</li>
+      <li>Searches are planned from the case brief</li>
+      <li>Every enabled source runs in parallel</li>
+      <li>Hits become evidence, gaps are named</li>
+      <li>One model call writes the note</li>
+      <li>The next poll shows it. A person marks the outcome</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h4><i>2</i>Technologies</h4>
+    <table class="tt">
+      <tr><th>Component</th><th>Technology</th></tr>
+      <tr><td>Console</td><td>React, Vite, nginx</td></tr>
+      <tr><td>API</td><td>FastAPI, Python</td></tr>
+      <tr><td>Sign-in</td><td>OIDC + PKCE, JWT</td></tr>
+      <tr><td>Data + queue</td><td>PostgreSQL 16, SQLAlchemy, Alembic</td></tr>
+      <tr><td>Agent framework</td><td>Strands Agents SDK</td></tr>
+      <tr><td>Model</td><td>Ollama locally, Amazon Bedrock in prod</td></tr>
+      <tr><td>Sources</td><td>CloudWatch, Datadog, Loki, GitHub</td></tr>
+      <tr><td>Local AWS</td><td>Floci</td></tr>
+      <tr><td>Runtime</td><td>Docker Compose, pytest</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h4><i>3</i>Design decisions</h4>
+    <div class="dec"><div class="di" style="background:#e0e7ff;color:#4338ca"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+      <div><h5>Postgres is the queue</h5><p>No Redis or SQS to run. <code>SKIP LOCKED</code> and a partial unique index rule out double runs.</p></div></div>
+    <div class="dec"><div class="di" style="background:#e0f2fe;color:#0369a1"><svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div>
+      <div><h5>Fan out first, then one model call</h5><p>The model never loops on tools, so latency and cost stay flat and small local models work.</p></div></div>
+    <div class="dec"><div class="di" style="background:#fee2e2;color:#b91c1c"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div>
+      <div><h5>Crash recovery</h5><p>A run stuck past <code>RUN_TIMEOUT_MINUTES</code> is failed and the case reopens.</p></div></div>
+    <div class="dec"><div class="di" style="background:#dcfce7;color:#15803d"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+      <div><h5>Isolation by service</h5><p>The token carries a service grant. Another service's case returns 404, so its existence stays hidden.</p></div></div>
+    <div class="dec" style="margin-bottom:0"><div class="di" style="background:#ffedd5;color:#c2410c"><svg viewBox="0 0 24 24"><path d="m12 2 10 5-10 5L2 7z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg></div>
+      <div><h5>Swappable edges</h5><p>Model and sources are environment settings. An unknown connector fails at startup.</p></div></div>
+  </div>
+
+  <div class="card">
+    <h4><i>4</i>What you can measure</h4>
+    <ul class="meas">
+      <li><b>Time to a note:</b> queued, running, completed or failed, with start and finish</li>
+      <li><b>Who acted:</b> name and login for open, investigate, mitigate, resolve</li>
+      <li><b>Evidence:</b> symptom, log, timeline, change, hypothesis, kept apart from the note</li>
+      <li><b>Outcomes:</b> open, investigating, mitigated, resolved, counted on the case list</li>
+      <li><b>Tests:</b> access, connectors, API and worker</li>
+    </ul>
+  </div>
+</div>
+
+<footer>Local: <code>docker compose up</code> runs Postgres, API, worker, web and Floci, with Ollama on the host · Production: the same images with <code>MODEL_PROVIDER=bedrock</code>, <code>AUTH_MODE=oidc</code>, <code>CONNECTORS=…</code></footer>
+
+</div>
+</body>
+</html>

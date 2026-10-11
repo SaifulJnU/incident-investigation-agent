@@ -1,6 +1,23 @@
 # Case file
 
-On-call engineers lose the first minutes of an incident to the same hunt: CloudWatch, Datadog, Loki, and GitHub, then a note written by hand. Case file does that hunt and leaves a record a person can act on. The alert system still pages. This service writes the investigation.
+On-call engineers lose the first minutes of an incident to the same hunt: CloudWatch, Datadog, Loki, and GitHub, then a note written by hand. Case file does that hunt and leaves a record a person can act on.
+
+The alert system still pages. This service writes the investigation. The numbers on the diagram are the order.
+
+<img src="docs/system-design.png" alt="System design of Case file. An on-call engineer clicks Investigate. The API checks the token and either queues a run or returns 409. Postgres holds the case and the queue. A worker claims the run, plans searches, fans out across CloudWatch, Datadog, Loki, and GitHub, keeps the evidence, and a note model writes the incident note. The worker is read-only." width="1000">
+
+## One investigation
+
+1. An engineer opens a case for one service and clicks Investigate.
+2. The API checks the token and the service grant. No token is 401. A service outside the grant is 403. Another service's case is 404.
+3. A case that is resolved, or already has a run in progress, is refused with 409.
+4. A clear case is queued. The API returns 202. It does not call the model.
+5. A worker, outside that request, claims up to four queued runs with `FOR UPDATE SKIP LOCKED`.
+6. It builds a brief from the case and searches the systems this company has enabled. The searches run together, and they are read-only.
+7. One model call writes the note. Evidence stays apart from that prose: symptom, log, timeline, change, hypothesis.
+8. The console poll shows the note. A person marks the case mitigated or resolved.
+
+The worker searches and records. It cannot commit, push, restart, or roll back.
 
 ## What you can measure
 
@@ -16,7 +33,7 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 
 ## What the build shows
 
-| | |
+| Part | In this build |
 | --- | --- |
 | Search | 4 production systems (CloudWatch, Datadog, Loki, GitHub), or a local log folder |
 | Model | Amazon Bedrock in production, Ollama locally. The console does not change |
