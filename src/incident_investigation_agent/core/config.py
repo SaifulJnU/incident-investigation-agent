@@ -153,6 +153,11 @@ class Settings:
         app_env = _env("APP_ENV", "local").lower()
         if app_env not in {"local", "prod"}:
             raise ValueError("APP_ENV must be 'local' or 'prod', " f"got {app_env!r}")
+        if app_env == "prod" and auth_mode == "dev":
+            raise ValueError(
+                "AUTH_MODE=dev is only for the local demo. "
+                "APP_ENV=prod requires AUTH_MODE=oidc."
+            )
         connectors = parse_connectors(_env("CONNECTORS", ""))
         issuer = _env("OIDC_ISSUER", "")
         audience = _env("OIDC_AUDIENCE", "case-file")

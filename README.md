@@ -37,7 +37,7 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 | --- | --- |
 | Search | 4 production systems (CloudWatch, Datadog, Loki, GitHub), or a local log folder |
 | Model | Amazon Bedrock in production, Ollama locally. The console does not change |
-| Login | Company identity provider in production (OIDC, PKCE). A local username and password exist only for the demo |
+| Login | Company identity provider in production (OIDC, PKCE). The demo username and password start only when `APP_ENV=local`. Production refuses to start with `AUTH_MODE=dev` |
 | Access | No token is 401. A service the token does not grant is 403. Another service's case is 404 |
 | Work split | The API returns immediately. A worker asks the model and writes the note |
 | Safety | The worker searches and records. It cannot commit, push, restart, or roll back |

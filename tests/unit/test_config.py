@@ -78,3 +78,23 @@ def test_rejects_unknown_provider(monkeypatch):
     monkeypatch.setenv("MODEL_PROVIDER", "openai")
     with pytest.raises(ValueError, match="MODEL_PROVIDER"):
         Settings.from_env()
+
+
+def test_prod_refuses_the_demo_login(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("AUTH_MODE", "dev")
+    monkeypatch.setenv("DEV_AUTH_SECRET", "local-dev-only-not-for-production-use")
+    monkeypatch.setenv("DEV_USERS", "oncall|On-call engineer|checkout-api|oncall-local")
+    with pytest.raises(ValueError, match="AUTH_MODE=dev"):
+        Settings.from_env()
+
+
+def test_local_demo_login_still_starts(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("AUTH_MODE", "dev")
+    monkeypatch.setenv("DEV_AUTH_SECRET", "local-dev-only-not-for-production-use")
+    monkeypatch.setenv("DEV_USERS", "oncall|On-call engineer|checkout-api|oncall-local")
+    settings = Settings.from_env()
+    assert settings.auth_mode == "dev"
+    assert settings.app_env == "local"
+    assert settings.dev_users[0].subject == "oncall"
