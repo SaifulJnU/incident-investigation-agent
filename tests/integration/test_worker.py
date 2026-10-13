@@ -8,7 +8,12 @@ from sqlalchemy.pool import StaticPool
 from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.db.models import Base, EvidenceItem, Incident, InvestigationRun, utcnow
 from incident_investigation_agent.repositories.cases import open_incident, queue_run
-from incident_investigation_agent.services.investigation import execute, release_stale_runs
+from incident_investigation_agent.services.investigation import (
+    execute,
+    release_held_runs,
+    release_stale_runs,
+)
+from incident_investigation_agent.worker import release_on_stop
 from incident_investigation_agent.services.report import message_text
 
 
@@ -121,6 +126,99 @@ def test_a_run_left_by_a_stopped_worker_can_be_investigated_again():
         incident = session.scalars(select(Incident)).one()
     assert released == 1
     assert finished.status == "failed"
+    assert incident.status == "open"
+
+
+def test_a_deploy_releases_the_run_this_worker_holds():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        held_case = open_incident(
+            session,
+            title="Checkout errors",
+            summary="500s after the deploy.",
+            service="checkout-api",
+            severity="sev1",
+            started_at=utcnow(),
+        )
+        held = queue_run(session, held_case, provider="ollama", model_name="llama3.1")
+        held.status = "running"
+        held.started_at = utcnow() - timedelta(minutes=1)
+        held_case.status = "investigating"
+        other_case = open_incident(
+            session,
+            title="Payments latency",
+            summary="p99 climbed.",
+            service="payments-api",
+            severity="sev2",
+            started_at=utcnow(),
+        )
+        other = queue_run(session, other_case, provider="ollama", model_name="llama3.1")
+        other.status = "running"
+        other.started_at = utcnow() - timedelta(minutes=1)
+        other_case.status = "investigating"
+        held_id = held.id
+        other_id = other.id
+        session.commit()
+
+    with factory() as session:
+        assert release_stale_runs(session, older_than_minutes=20) == 0
+        session.commit()
+
+    released = release_on_stop(factory, [held_id])
+
+    with factory() as session:
+        held_run = session.get(InvestigationRun, held_id)
+        other_run = session.get(InvestigationRun, other_id)
+        cases = {item.service: item.status for item in session.scalars(select(Incident))}
+    assert released == 1
+    assert held_run.status == "failed"
+    assert held_run.error == "The worker stopped before this run finished."
+    assert cases["checkout-api"] == "open"
+    assert other_run.status == "running"
+    assert cases["payments-api"] == "investigating"
+
+
+def test_stopping_during_the_note_does_not_put_the_run_back():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        incident = open_incident(
+            session,
+            title="Checkout errors",
+            summary="500s after the deploy.",
+            service="checkout-api",
+            severity="sev1",
+            started_at=utcnow(),
+        )
+        run = queue_run(session, incident, provider="ollama", model_name="llama3.1")
+        run_id = run.id
+        session.commit()
+
+    def investigate(_settings, _store, _prompt, _service):
+        with factory() as session:
+            release_held_runs(session, [run_id])
+            session.commit()
+        return "This note arrived after the worker stopped."
+
+    execute(factory, _settings(), run_id, investigate)
+
+    with factory() as session:
+        finished = session.get(InvestigationRun, run_id)
+        incident = session.scalars(select(Incident)).one()
+    assert finished.status == "failed"
+    assert finished.report is None
+    assert finished.error == "The worker stopped before this run finished."
     assert incident.status == "open"
 
 

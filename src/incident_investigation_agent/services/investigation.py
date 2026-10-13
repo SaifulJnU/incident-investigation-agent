@@ -21,10 +21,10 @@ log = logging.getLogger("incident_investigation_agent.worker")
 
 
 def release_stale_runs(session: Session, *, older_than_minutes: int) -> int:
-    """Fail runs a worker claimed and then stopped before finishing.
+    """Fail runs a crashed worker left behind.
 
-    A crashed worker leaves the run in ``running``. The unique active-run
-    index then refuses a new investigation for that case.
+    A crash does not get a stop signal, so the row stays ``running`` until
+    this cutoff. The unique active-run index then refuses a new investigation.
     """
     cutoff = utcnow() - timedelta(minutes=older_than_minutes)
     runs = list(
@@ -36,6 +36,33 @@ def release_stale_runs(session: Session, *, older_than_minutes: int) -> int:
             )
         ).all()
     )
+    _fail_abandoned(session, runs)
+    return len(runs)
+
+
+def release_held_runs(session: Session, run_ids) -> int:
+    """Fail runs this process still holds.
+
+    A deploy stops the worker while a note is in progress. Those rows are
+    released now, including a run that started moments ago. A run this
+    process does not hold stays with whoever claimed it.
+    """
+    ids = list(run_ids)
+    if not ids:
+        return 0
+    runs = list(
+        session.scalars(
+            select(InvestigationRun).where(
+                InvestigationRun.id.in_(ids),
+                InvestigationRun.status == "running",
+            )
+        ).all()
+    )
+    _fail_abandoned(session, runs)
+    return len(runs)
+
+
+def _fail_abandoned(session: Session, runs) -> None:
     now = utcnow()
     for run in runs:
         run.status = "failed"
@@ -45,7 +72,6 @@ def release_stale_runs(session: Session, *, older_than_minutes: int) -> int:
         if incident is not None and incident.status == "investigating":
             incident.status = "open"
             incident.updated_at = now
-    return len(runs)
 
 
 def claim_next(session: Session) -> InvestigationRun | None:
@@ -194,7 +220,7 @@ def _finish(
 ) -> None:
     with factory() as session:
         run = session.get(InvestigationRun, run_id)
-        if run is None:
+        if run is None or run.status in {"completed", "failed"}:
             return
         incident = session.get(Incident, run.incident_id)
         run.status = status

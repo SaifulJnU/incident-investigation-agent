@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import signal
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -12,6 +14,7 @@ from incident_investigation_agent.db.session import session_factory_from_url
 from incident_investigation_agent.services.investigation import (
     claim_batch,
     execute,
+    release_held_runs,
     release_stale_runs,
     wait_for_database,
 )
@@ -19,6 +22,35 @@ from incident_investigation_agent.services.investigation import (
 BATCH = 4
 
 log = logging.getLogger("incident_investigation_agent.worker")
+
+_held: set = set()
+_held_guard = threading.Lock()
+
+
+def hold_run(run_id) -> None:
+    with _held_guard:
+        _held.add(run_id)
+
+
+def drop_run(run_id) -> None:
+    with _held_guard:
+        _held.discard(run_id)
+
+
+def held_run_ids() -> list:
+    with _held_guard:
+        return list(_held)
+
+
+def release_on_stop(factory, run_ids) -> int:
+    """Release the runs this process was working on when a deploy stopped it."""
+    ids = list(run_ids)
+    if not ids:
+        return 0
+    with factory() as session:
+        released = release_held_runs(session, ids)
+        session.commit()
+        return released
 
 
 def main() -> None:
@@ -28,6 +60,7 @@ def main() -> None:
         raise SystemExit("The worker requires PostgreSQL.")
     factory = session_factory_from_url(settings.database_url)
     wait_for_database(factory)
+    _listen_for_stop(factory)
     names = ",".join(enabled_connectors(settings.app_env, settings.connectors))
     log.info(
         "worker ready provider=%s env=%s connectors=%s",
@@ -54,13 +87,37 @@ def _run_available(factory, settings: Settings) -> bool:
             session.commit()
             return False
         run_ids = [run.id for run in runs]
-        session.commit()
-    if len(run_ids) == 1:
-        execute(factory, settings, run_ids[0])
+        for run_id in run_ids:
+            hold_run(run_id)
+        try:
+            session.commit()
+        except Exception:
+            for run_id in run_ids:
+                drop_run(run_id)
+            raise
+    try:
+        if len(run_ids) == 1:
+            execute(factory, settings, run_ids[0])
+            return True
+        with ThreadPoolExecutor(max_workers=len(run_ids)) as pool:
+            list(pool.map(lambda run_id: execute(factory, settings, run_id), run_ids))
         return True
-    with ThreadPoolExecutor(max_workers=len(run_ids)) as pool:
-        list(pool.map(lambda run_id: execute(factory, settings, run_id), run_ids))
-    return True
+    finally:
+        for run_id in run_ids:
+            drop_run(run_id)
+
+
+def _listen_for_stop(factory) -> None:
+    def _on_stop(signum, _frame):
+        try:
+            released = release_on_stop(factory, held_run_ids())
+            log.info("worker stopped signal=%s released=%s", signum, released)
+        except Exception:
+            log.exception("could not release held runs")
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _on_stop)
+    signal.signal(signal.SIGINT, _on_stop)
 
 
 if __name__ == "__main__":
