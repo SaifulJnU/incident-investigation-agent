@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from incident_investigation_agent.core.config import Settings
-from incident_investigation_agent.db.models import Incident, InvestigationRun, utcnow
+from incident_investigation_agent.db.models import Incident, InvestigationRun, WorkerBeat, utcnow
 from incident_investigation_agent.db.session import database_ready
 from incident_investigation_agent.repositories.cases import DbCaseStore
 from incident_investigation_agent.services.agent import build_note_agent
@@ -239,6 +239,7 @@ def wait_for_database(factory: sessionmaker[Session]) -> None:
             try:
                 with factory() as session:
                     session.execute(select(InvestigationRun).limit(1))
+                    session.execute(select(WorkerBeat).limit(1))
                 return
             except Exception:
                 log.info("waiting for schema")

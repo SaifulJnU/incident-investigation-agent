@@ -112,3 +112,12 @@ class InvestigationRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WorkerBeat(Base):
+    """One row per worker process name. The API reads it to see if that process is alive."""
+
+    __tablename__ = "worker_beats"
+
+    name: Mapped[str] = mapped_column(String(32), primary_key=True)
+    beat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

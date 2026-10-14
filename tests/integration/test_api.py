@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 from incident_investigation_agent.api.app import create_app
 from incident_investigation_agent.core.config import Settings, parse_dev_users
 from incident_investigation_agent.db.models import Base
+from incident_investigation_agent.services.heartbeat import record_beat
 
 
 def _settings() -> Settings:
@@ -53,9 +54,20 @@ def _auth(client, subject: str, password: str) -> dict[str, str]:
 
 def test_health_stays_open(client):
     response = client.get("/api/health")
-    assert response.status_code == 200
-    assert response.json()["database"] == "ok"
+    assert response.status_code == 503
+    assert response.json() == {"status": "degraded", "database": "ok", "worker": "down"}
     assert response.headers["x-request-id"]
+
+
+def test_health_is_ok_when_the_worker_has_beaten(client):
+    factory = client.app.state.session_factory
+    with factory() as session:
+        record_beat(session)
+        session.commit()
+
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "database": "ok", "worker": "ok"}
 
 
 def test_cases_require_a_token(client):

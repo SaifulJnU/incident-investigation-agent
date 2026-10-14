@@ -82,10 +82,12 @@ services:
     environment: *app-env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # The API health check reads this heartbeat.
+    # Start with Postgres, then wait until worker_beats exists.
     depends_on:
       floci:
         condition: service_started
-      api:
+      postgres:
         condition: service_healthy
 
   checkout:

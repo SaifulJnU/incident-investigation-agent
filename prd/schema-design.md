@@ -2,7 +2,7 @@
 
 Product: Case file  
 Database: PostgreSQL 16  
-Schema revision: `0003_case_actors`  
+Schema revision: `0004_worker_beat`  
 Status: implemented
 
 This document is the contract for the case record. The console, API, and worker all read and write these tables. External systems (logs, CloudWatch, Datadog, GitHub) are not copied into this database. A tool returns a result, and the case keeps only the short fact that was recorded.
@@ -154,6 +154,17 @@ FOR UPDATE SKIP LOCKED;
 
 `SKIP LOCKED` lets a second worker take the next queued row instead of waiting on the row the first worker holds. One worker is the current deployment. The claim query is already safe for more than one.
 
+### 2.4 `worker_beats`
+
+One row for the worker process. It is not part of a case. The worker updates `beat_at` every few seconds, and `GET /api/health` treats a missing or stale row as a dead worker.
+
+| Column | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `name` | `varchar(32)` | no | Primary key. The current deployment writes `worker` |
+| `beat_at` | `timestamptz` | no | When this process last showed it was alive |
+
+A stopped worker deletes its row. A crash cannot, so the row stays until `beat_at` is older than 20 seconds.
+
 ## 3. State
 
 Two independent state fields. The database checks the allowed values. The application decides which value is written.
@@ -278,4 +289,4 @@ Company A and Company B run the same images. Each has its own PostgreSQL databas
 
 ## 6. Revision
 
-`alembic/versions/0001_case_file.py` creates the three tables, the four check constraints, the foreign keys, and the indexes in section 2. `0002_actors` adds `incidents.opened_by` and `investigation_runs.requested_by`. `0003_case_actors` adds the display names, who mitigated or resolved the case, and an index on `incidents.status` for the case list filter. The API image runs `alembic upgrade head` before it serves traffic. The worker waits until `investigation_runs` can be selected.
+`alembic/versions/0001_case_file.py` creates the three tables, the four check constraints, the foreign keys, and the indexes in section 2. `0002_actors` adds `incidents.opened_by` and `investigation_runs.requested_by`. `0003_case_actors` adds the display names, who mitigated or resolved the case, and an index on `incidents.status` for the case list filter. `0004_worker_beat` adds `worker_beats`. The API image runs `alembic upgrade head` before it serves traffic. The worker waits until `investigation_runs` and `worker_beats` can be selected.
