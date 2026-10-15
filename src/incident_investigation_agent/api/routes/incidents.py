@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import timezone
 
@@ -35,6 +36,7 @@ from incident_investigation_agent.repositories.cases import (
 )
 
 router = APIRouter()
+log = logging.getLogger("incident_investigation_agent.api")
 
 
 @router.get("/api/incidents", response_model=list[IncidentOut])
@@ -168,6 +170,12 @@ def investigate(
             status_code=409,
             detail="An investigation is already running for this case.",
         ) from None
+    log.info(
+        "investigation queued case=%s run=%s service=%s",
+        incident.id,
+        run.id,
+        incident.service,
+    )
     return run
 
 

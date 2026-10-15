@@ -77,6 +77,8 @@ sequenceDiagram
   API-->>Console: note, evidence, run status
 ```
 
+Worker lines written while that run is in progress end with `case=<incident id> run=<run id>`. A connector call on another thread keeps the same pair. `worker ready` does not, because no run is in progress.
+
 The text sent to the model is not the title alone. The worker builds it from the case:
 
 ```text

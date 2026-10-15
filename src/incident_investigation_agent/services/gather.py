@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from incident_investigation_agent.core.config import Settings, enabled_connectors
+from incident_investigation_agent.core.logging import in_context
 from incident_investigation_agent.infrastructure.connectors import (
     cloudwatch,
     datadog,
@@ -14,6 +16,8 @@ from incident_investigation_agent.infrastructure.connectors import (
     local_logs,
     loki,
 )
+
+log = logging.getLogger("incident_investigation_agent.gather")
 
 QUERIES = ("timeout", "timed out", "500")
 _EXTRA_QUERIES = 3
@@ -145,10 +149,25 @@ def gather(settings: Settings, service: str | None, hint: str = "") -> SearchBat
     names = enabled_connectors(settings.app_env, settings.connectors)
     jobs = _jobs(settings, service, names, _queries(hint, service))
     if not jobs:
-        return SearchBatch("No connectors are enabled.", ())
-    with ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:
-        blocks = list(pool.map(lambda job: job(), jobs))
-    return _combine(blocks)
+        batch = SearchBatch("No connectors are enabled.", ())
+        _log_search(names, batch)
+        return batch
+    ready = [in_context(job) for job in jobs]
+    with ThreadPoolExecutor(max_workers=min(8, len(ready))) as pool:
+        blocks = list(pool.map(lambda job: job(), ready))
+    batch = _combine(blocks)
+    _log_search(names, batch)
+    return batch
+
+
+def _log_search(names: tuple[str, ...], batch: SearchBatch) -> None:
+    log.info(
+        "search finished connectors=%s findings=%s misses=%s unchecked=%s",
+        ",".join(names) or "-",
+        len(batch.findings),
+        len(batch.misses),
+        len(batch.unchecked),
+    )
 
 
 def _queries(hint: str, service: str | None) -> tuple[str, ...]:

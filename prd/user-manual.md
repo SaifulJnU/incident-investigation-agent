@@ -59,6 +59,7 @@ The image includes `examples/logs/checkout-api/api.log`. That file is the only s
 | The note describes `record_evidence` but the timeline is empty | The model searched, then wrote about the tool instead of calling it. The search still happened. A stronger local model, or a later prompt fix, is what makes the timeline fill. |
 | Investigation running and it never finishes | A deploy releases the run that worker still holds, and the case goes back to open. A crash has no stop signal, so that row stays `running` until the timeout (20 minutes unless `RUN_TIMEOUT_MINUTES` says otherwise). Investigate is refused while the row is still running. |
 | `/api/health` says the worker is down | The worker writes a heartbeat every 5 seconds. A beat older than 20 seconds, or a worker that has stopped and cleared its beat, is `worker: down` and the status is `degraded`. Check `docker compose logs worker`. |
+| Need the log for one investigation | Copy the run id from the case. Worker lines for that run end with `case=<id> run=<id>`. |
 
 Worker logs:
 
@@ -66,7 +67,7 @@ Worker logs:
 docker compose logs worker --tail 50
 ```
 
-A healthy local worker contains `worker ready provider=ollama`.
+A healthy local worker contains `worker ready provider=ollama`. That line has no case. A run writes `investigation started`, `search finished`, then `investigation completed` or `investigation failed`. Each of those ends with `case=<id> run=<id>`. A stopped worker writes `investigation released` with the same pair. Search the log for the run id.
 
 ## Command line, without the console
 

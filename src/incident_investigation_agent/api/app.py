@@ -11,6 +11,7 @@ from incident_investigation_agent.api.routes.auth import router as auth_router
 from incident_investigation_agent.api.routes.health import router as health_router
 from incident_investigation_agent.api.routes.incidents import router as incidents_router
 from incident_investigation_agent.core.config import Settings
+from incident_investigation_agent.core.logging import configure_logging
 from incident_investigation_agent.db.session import session_factory_from_url
 
 
@@ -18,6 +19,7 @@ def create_app(
     session_factory: sessionmaker[Session] | None = None,
     settings: Settings | None = None,
 ) -> FastAPI:
+    configure_logging()
     app = FastAPI(title="Case file")
     resolved = settings or Settings.from_env()
     if session_factory is None:

@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -101,11 +103,29 @@ def test_open_case_add_note_and_queue(client):
     assert noted.status_code == 201
     assert noted.json()["evidence"][0]["source"] == "On-call engineer (oncall)"
 
-    queued = client.post(f"/api/incidents/{incident_id}/investigate", headers=headers)
+    records: list[logging.LogRecord] = []
+
+    class _Grab(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    api_log = logging.getLogger("incident_investigation_agent.api")
+    handler = _Grab()
+    api_log.addHandler(handler)
+    api_log.setLevel(logging.INFO)
+    try:
+        queued = client.post(f"/api/incidents/{incident_id}/investigate", headers=headers)
+    finally:
+        api_log.removeHandler(handler)
     assert queued.status_code == 202
     assert queued.json()["status"] == "queued"
     assert queued.json()["requested_by"] == "oncall"
     assert queued.json()["requested_by_name"] == "On-call engineer"
+    run_id = queued.json()["id"]
+    assert any(
+        record.getMessage() == f"investigation queued case={incident_id} run={run_id} service=checkout-api"
+        for record in records
+    )
 
     again = client.post(f"/api/incidents/{incident_id}/investigate", headers=headers)
     assert again.status_code == 409

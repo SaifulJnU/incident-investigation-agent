@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from incident_investigation_agent.core.config import Settings
+from incident_investigation_agent.core.logging import bind_investigation
 from incident_investigation_agent.db.models import Incident, InvestigationRun, WorkerBeat, utcnow
 from incident_investigation_agent.db.session import database_ready
 from incident_investigation_agent.repositories.cases import DbCaseStore
@@ -36,7 +37,7 @@ def release_stale_runs(session: Session, *, older_than_minutes: int) -> int:
             )
         ).all()
     )
-    _fail_abandoned(session, runs)
+    _fail_abandoned(session, runs, reason="timeout")
     return len(runs)
 
 
@@ -58,11 +59,11 @@ def release_held_runs(session: Session, run_ids) -> int:
             )
         ).all()
     )
-    _fail_abandoned(session, runs)
+    _fail_abandoned(session, runs, reason="worker-stopped")
     return len(runs)
 
 
-def _fail_abandoned(session: Session, runs) -> None:
+def _fail_abandoned(session: Session, runs, *, reason: str) -> None:
     now = utcnow()
     for run in runs:
         run.status = "failed"
@@ -72,6 +73,8 @@ def _fail_abandoned(session: Session, runs) -> None:
         if incident is not None and incident.status == "investigating":
             incident.status = "open"
             incident.updated_at = now
+        with bind_investigation(run.incident_id, run.id):
+            log.info("investigation released reason=%s", reason)
 
 
 def claim_next(session: Session) -> InvestigationRun | None:
@@ -126,6 +129,8 @@ def execute(factory: sessionmaker[Session], settings: Settings, run_id, investig
             run.error = "Case not found."
             run.finished_at = utcnow()
             session.commit()
+            with bind_investigation(None, run_id):
+                log.error("investigation failed reason=case-not-found")
             return
         run.status = "running"
         run.started_at = run.started_at or utcnow()
@@ -152,13 +157,23 @@ def execute(factory: sessionmaker[Session], settings: Settings, run_id, investig
     store = DbCaseStore(factory, incident_id)
     prompt = investigation_prompt(brief, store.list())
     runner = investigate or _investigate_with_agent
-    try:
-        report = runner(settings, store, prompt, service_name)
-    except Exception as exc:
-        log.exception("investigation failed run=%s", run_id)
-        _finish(factory, run_id, status="failed", error=str(exc)[:2000])
-        return
-    _finish(factory, run_id, status="completed", report=report)
+    started = time.perf_counter()
+    with bind_investigation(incident_id, run_id):
+        log.info(
+            "investigation started service=%s provider=%s",
+            service_name,
+            settings.model_provider,
+        )
+        try:
+            report = runner(settings, store, prompt, service_name)
+        except Exception as exc:
+            log.exception("investigation failed")
+            _finish(factory, run_id, status="failed", error=str(exc)[:2000])
+            return
+        if _finish(factory, run_id, status="completed", report=report):
+            log.info("investigation completed seconds=%.2f", time.perf_counter() - started)
+            return
+        log.info("investigation already finished seconds=%.2f", time.perf_counter() - started)
 
 
 def run_once(factory: sessionmaker[Session], settings: Settings, investigate=None) -> bool:
@@ -217,11 +232,11 @@ def _finish(
     status: str,
     report: str | None = None,
     error: str | None = None,
-) -> None:
+) -> bool:
     with factory() as session:
         run = session.get(InvestigationRun, run_id)
         if run is None or run.status in {"completed", "failed"}:
-            return
+            return False
         incident = session.get(Incident, run.incident_id)
         run.status = status
         run.report = report
@@ -231,6 +246,7 @@ def _finish(
             incident.status = "open"
             incident.updated_at = utcnow()
         session.commit()
+        return True
 
 
 def wait_for_database(factory: sessionmaker[Session]) -> None:
