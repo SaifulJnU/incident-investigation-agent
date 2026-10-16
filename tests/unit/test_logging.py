@@ -1,6 +1,7 @@
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -13,7 +14,7 @@ from incident_investigation_agent.core.logging import (
     bind_investigation,
     in_context,
 )
-from incident_investigation_agent.db.models import Base, utcnow
+from incident_investigation_agent.db.models import Base, InvestigationRun, utcnow
 from incident_investigation_agent.repositories.cases import open_incident, queue_run
 from incident_investigation_agent.services.gather import gather
 from incident_investigation_agent.services.investigation import execute, release_held_runs
@@ -228,6 +229,51 @@ def test_a_failed_run_logs_the_case_and_the_run_on_the_error_line():
     assert failed[0].startswith("ERROR investigation failed")
     assert f"case={incident_id} run={run_id}" in failed[0]
     assert "ollama is not running" in failed[0]
+
+
+def test_a_failed_run_stores_the_error_without_tokens():
+    token = "ghp_abcdefghijklmnopqrstuvwxyz"
+    key = "AKIAIOSFODNN7EXAMPLE"
+    password = "supersecretpassword"
+    datadog = "dd-secret-token-value"
+    factory = _factory()
+    with factory() as session:
+        incident = open_incident(
+            session,
+            title="Search timeouts",
+            summary="Search started failing.",
+            service="search-api",
+            severity="sev2",
+            started_at=utcnow(),
+        )
+        run = queue_run(session, incident, provider="ollama", model_name="llama3.1")
+        run_id = run.id
+        session.commit()
+
+    def investigate(*_args):
+        raise RuntimeError(
+            f"model failed Bearer {token} key {key} "
+            f"url postgresql://app:{password}@db/investigations datadog {datadog}"
+        )
+
+    settings = replace(
+        _settings(),
+        github_token=token,
+        datadog_api_key=datadog,
+        database_url=f"postgresql://app:{password}@db/investigations",
+    )
+    execute(factory, settings, run_id, investigate)
+    with factory() as session:
+        stored = session.get(InvestigationRun, run_id)
+    assert stored is not None
+    assert stored.status == "failed"
+    assert stored.error is not None
+    assert "model failed" in stored.error
+    assert token not in stored.error
+    assert key not in stored.error
+    assert password not in stored.error
+    assert datadog not in stored.error
+    assert "[redacted]" in stored.error
 
 
 def test_releasing_a_held_run_names_that_case():

@@ -126,7 +126,7 @@ One execution of Investigate. The same case may be investigated again after a pr
 | `model_name` | `varchar(512)` | no | Model id recorded when the run is queued, then confirmed when it starts |
 | `requested_by` | `varchar(200)` | no | Subject of the person who clicked Investigate |
 | `report` | `text` | yes | Incident note. Set only when `status` is `completed` |
-| `error` | `text` | yes | Failure text, truncated to 2000 characters. Set only when `status` is `failed` |
+| `error` | `text` | yes | Failure text, truncated to 2000 characters after tokens and configured secrets are replaced. Set only when `status` is `failed` |
 | `created_at` | `timestamptz` | no | When the API queued the run |
 | `started_at` | `timestamptz` | yes | When the worker claimed the run |
 | `finished_at` | `timestamptz` | yes | When the worker stored `completed` or `failed` |

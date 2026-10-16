@@ -43,7 +43,8 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 | Safety | The worker searches and records. It cannot commit, push, restart, or roll back |
 | Trace | Worker lines for one run end with that case id and that run id |
 | Search bound | A connector call that does not finish is failed for that source. The other sources are kept. The run does not stay in progress until the 20-minute timeout |
-| Tests | 74 automated tests for access, connectors, the API, and the worker |
+| Stored errors | A failed run keeps the error with tokens and configured secrets replaced. A connector failure that is not an HTTP response is stored the same way |
+| Tests | 77 automated tests for access, connectors, the API, and the worker |
 | Stack | Python, FastAPI, Postgres, Alembic, React |
 
 ## Run it

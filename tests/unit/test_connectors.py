@@ -1,6 +1,6 @@
 from io import BytesIO
 from pathlib import Path
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -77,6 +77,27 @@ def test_cloudwatch_client_bounds_the_call(monkeypatch):
     assert config.connect_timeout == 12
     assert config.read_timeout == 12
     assert config.retries["max_attempts"] == 2
+
+
+def test_cloudwatch_failure_drops_a_token_that_is_not_an_http_body(monkeypatch):
+    class _Client:
+        def filter_log_events(self, **kwargs):
+            raise RuntimeError("denied AKIAIOSFODNN7EXAMPLE for dd-secret-token-value")
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.infrastructure.connectors.cloudwatch.logs_client",
+        lambda region, endpoint_url="", timeout=15: _Client(),
+    )
+    settings = _settings(
+        app_env="prod",
+        cloudwatch_log_group_prefix="/aws/ecs/",
+        datadog_api_key="dd-secret-token-value",
+    )
+    result = search_cloudwatch_logs(settings, "checkout-api", "timeout", 5)
+    assert result.startswith("CloudWatch search failed")
+    assert "AKIAIOSFODNN7EXAMPLE" not in result
+    assert "dd-secret-token-value" not in result
+    assert "[redacted]" in result
 
 
 def test_cloudwatch_reports_a_missing_log_group():
@@ -199,3 +220,19 @@ def test_http_error_does_not_keep_a_header_secret(monkeypatch):
         request_json("https://api.example.com/logs", headers={"DD-API-KEY": secret})
     assert secret not in str(caught.value)
     assert "[redacted]" in str(caught.value)
+
+
+def test_http_error_redacts_a_token_that_was_not_a_header(monkeypatch):
+    token = "ghp_abcdefghijklmnopqrstuvwxyz"
+
+    def boom(request, timeout):
+        raise URLError(f"connection failed Bearer {token}")
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.infrastructure.connectors.http.urlopen",
+        boom,
+    )
+    with pytest.raises(ConnectorError) as caught:
+        request_json("https://api.example.com/logs", headers={"Accept": "application/json"})
+    assert token not in str(caught.value)
+    assert "Bearer [redacted]" in str(caught.value)

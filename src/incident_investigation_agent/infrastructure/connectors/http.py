@@ -6,6 +6,8 @@ import json
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from incident_investigation_agent.infrastructure.redact import redact
+
 
 class ConnectorError(Exception):
     """A connector call failed. The message is safe to show the model."""
@@ -45,15 +47,5 @@ def request_json(
 
 
 def _redact(text: str, headers: dict[str, str]) -> str:
-    """Drop header secrets if a service echoes them in an error."""
-    redacted = text
-    for value in headers.values():
-        secret = value.strip()
-        if len(secret) < 8:
-            continue
-        redacted = redacted.replace(secret, "[redacted]")
-        if secret.lower().startswith("bearer "):
-            token = secret.split(None, 1)[1]
-            if len(token) >= 8:
-                redacted = redacted.replace(token, "[redacted]")
-    return redacted
+    """Drop header secrets, and token shapes the header list does not name."""
+    return redact(text, headers.values())

@@ -13,6 +13,7 @@ from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.core.logging import bind_investigation
 from incident_investigation_agent.db.models import Incident, InvestigationRun, WorkerBeat, utcnow
 from incident_investigation_agent.db.session import database_ready
+from incident_investigation_agent.infrastructure.redact import configured_secrets, redact
 from incident_investigation_agent.repositories.cases import DbCaseStore
 from incident_investigation_agent.services.agent import build_note_agent
 from incident_investigation_agent.services.gather import SearchBatch, gather
@@ -167,8 +168,10 @@ def execute(factory: sessionmaker[Session], settings: Settings, run_id, investig
         try:
             report = runner(settings, store, prompt, service_name)
         except Exception as exc:
-            log.exception("investigation failed")
-            _finish(factory, run_id, status="failed", error=str(exc)[:2000])
+            safe = redact(str(exc), configured_secrets(settings))[:2000]
+            detail = safe.splitlines()[0][:300] if safe else exc.__class__.__name__
+            log.error("investigation failed error=%s", detail)
+            _finish(factory, run_id, status="failed", error=safe or exc.__class__.__name__)
             return
         if _finish(factory, run_id, status="completed", report=report):
             log.info("investigation completed seconds=%.2f", time.perf_counter() - started)

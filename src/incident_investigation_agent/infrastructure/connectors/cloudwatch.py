@@ -13,6 +13,7 @@ from incident_investigation_agent.infrastructure.connectors.mapping import (
     mapped_target,
     require_service,
 )
+from incident_investigation_agent.infrastructure.redact import configured_secrets, redact
 
 _GROUP = re.compile(r"^[\w./-]{1,512}$")
 
@@ -78,7 +79,7 @@ def search_cloudwatch_logs(settings: Settings, service: str | None, query: str, 
             limit=capped,
         )
     except Exception as exc:
-        return f"CloudWatch search failed for {group}: {_safe_error(exc)}"
+        return f"CloudWatch search failed for {group}: {_safe_error(exc, settings)}"
     events = page.get("events") or []
     if not events:
         return (
@@ -107,6 +108,6 @@ def _limit(limit: int) -> int:
     return min(limit, 50)
 
 
-def _safe_error(exc: Exception) -> str:
-    text = str(exc).splitlines()[0][:300]
+def _safe_error(exc: Exception, settings: Settings) -> str:
+    text = redact(str(exc).splitlines()[0], configured_secrets(settings))[:300]
     return text or exc.__class__.__name__

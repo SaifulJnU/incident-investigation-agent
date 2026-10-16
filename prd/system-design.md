@@ -131,6 +131,8 @@ tools_for(settings) -> list of Strands tools
 
 A call that is still running after `CONNECTOR_TIMEOUT_SECONDS` (15 by default) is recorded as unchecked for that source. CloudWatch, Datadog, Loki, and GitHub use the same limit on the socket. The other sources are kept, and the worker moves on to the note. The run does not stay in progress until `RUN_TIMEOUT_MINUTES`.
 
+A failed run stores `error` with tokens removed. Bearer tokens, GitHub tokens, AWS access key ids, a password written in a URL, and the Datadog, Loki, GitHub, and database secrets from this process are replaced with `[redacted]` before the row is written. CloudWatch applies the same replacement when its client raises, so a failure that is not an HTTP response is not saved raw.
+
 The case-file tools `record_evidence` and `list_evidence` stay on for every company. They write to this product's database, not to the company's other systems.
 
 ## Data the case stores
