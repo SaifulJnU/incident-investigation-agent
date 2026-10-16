@@ -136,6 +136,39 @@ def test_search_finished_names_the_open_run():
     assert "findings=" in finished[0]
 
 
+def test_a_connector_call_on_its_own_thread_keeps_the_same_run(monkeypatch):
+    def search(_settings, _service, _query, _limit):
+        logging.getLogger("incident_investigation_agent.gather").info("connector returned")
+        return "No lines matched."
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.gather.local_logs.search_local_logs",
+        search,
+    )
+    settings = Settings(
+        model_provider="ollama",
+        ollama_host="http://localhost:11434",
+        ollama_model="llama3.1",
+        bedrock_model_id="test-model",
+        aws_region="us-west-2",
+        log_dir=Path("examples/logs"),
+        case_dir=Path(".case"),
+        database_url="sqlite+pysqlite://",
+        app_env="local",
+        connectors=("local_logs",),
+    )
+    logger, previous, handler = _listen()
+    try:
+        with bind_investigation("case-1", "run-1"):
+            gather(settings, "checkout-api")
+    finally:
+        _silence(logger, previous, handler)
+
+    returned = [line for line in _lines(handler) if "connector returned" in line]
+    assert returned
+    assert all("case=case-1 run=run-1" in line for line in returned)
+
+
 def test_execute_logs_the_case_and_the_run_from_start_to_finish():
     factory = _factory()
     with factory() as session:

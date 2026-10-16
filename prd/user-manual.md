@@ -60,6 +60,7 @@ The image includes `examples/logs/checkout-api/api.log`. That file is the only s
 | Investigation running and it never finishes | A deploy releases the run that worker still holds, and the case goes back to open. A crash has no stop signal, so that row stays `running` until the timeout (20 minutes unless `RUN_TIMEOUT_MINUTES` says otherwise). Investigate is refused while the row is still running. |
 | `/api/health` says the worker is down | The worker writes a heartbeat every 5 seconds. A beat older than 20 seconds, or a worker that has stopped and cleared its beat, is `worker: down` and the status is `degraded`. Check `docker compose logs worker`. |
 | Need the log for one investigation | Copy the run id from the case. Worker lines for that run end with `case=<id> run=<id>`. |
+| One source never answers | That source is recorded as not checked after `CONNECTOR_TIMEOUT_SECONDS` (15 unless the environment says otherwise). The other sources are still written into the note. The worker log contains `search timed out`. |
 
 Worker logs:
 

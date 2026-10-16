@@ -129,6 +129,8 @@ tools_for(settings) -> list of Strands tools
 
 `APP_ENV=local` enables `local_logs`. `APP_ENV=prod` enables `cloudwatch`, `datadog`, `loki`, and `github`. `CONNECTORS=cloudwatch,github` replaces that default. An unknown name fails at startup with the list of known names. A connector whose setting is missing returns that missing name from the tool, and the case stays usable.
 
+A call that is still running after `CONNECTOR_TIMEOUT_SECONDS` (15 by default) is recorded as unchecked for that source. CloudWatch, Datadog, Loki, and GitHub use the same limit on the socket. The other sources are kept, and the worker moves on to the note. The run does not stay in progress until `RUN_TIMEOUT_MINUTES`.
+
 The case-file tools `record_evidence` and `list_evidence` stay on for every company. They write to this product's database, not to the company's other systems.
 
 ## Data the case stores

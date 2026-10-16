@@ -80,6 +80,16 @@ def test_rejects_unknown_provider(monkeypatch):
         Settings.from_env()
 
 
+def test_connector_timeout_defaults_and_rejects_a_wide_bound(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "oidc")
+    monkeypatch.setenv("OIDC_ISSUER", "https://login.example.com")
+    monkeypatch.delenv("CONNECTOR_TIMEOUT_SECONDS", raising=False)
+    assert Settings.from_env().connector_timeout_seconds == 15
+    monkeypatch.setenv("CONNECTOR_TIMEOUT_SECONDS", "90")
+    with pytest.raises(ValueError, match="CONNECTOR_TIMEOUT_SECONDS"):
+        Settings.from_env()
+
+
 def test_prod_refuses_the_demo_login(monkeypatch):
     monkeypatch.setenv("APP_ENV", "prod")
     monkeypatch.setenv("AUTH_MODE", "dev")

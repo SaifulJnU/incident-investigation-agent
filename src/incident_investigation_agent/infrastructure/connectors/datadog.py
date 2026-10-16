@@ -57,7 +57,13 @@ def search_datadog_logs(settings: Settings, service: str | None, query: str, lim
         "DD-APPLICATION-KEY": settings.datadog_app_key,
     }
     try:
-        body = request_json(url, method="POST", headers=headers, payload=payload)
+        body = request_json(
+            url,
+            method="POST",
+            headers=headers,
+            payload=payload,
+            timeout=settings.connector_timeout_seconds,
+        )
     except ConnectorError as exc:
         return f"Datadog search failed: {exc}"
     rows = body.get("data") if isinstance(body, dict) else None

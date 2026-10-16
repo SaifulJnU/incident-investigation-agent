@@ -53,7 +53,11 @@ def search_loki_logs(settings: Settings, service: str | None, query: str, limit:
     if settings.loki_token:
         headers["Authorization"] = f"Bearer {settings.loki_token}"
     try:
-        body = request_json(url, headers=headers)
+        body = request_json(
+            url,
+            headers=headers,
+            timeout=settings.connector_timeout_seconds,
+        )
     except ConnectorError as exc:
         return f"Loki search failed: {exc}"
     return _lines(body, label, scoped, needle, settings.loki_lookback_minutes, capped)

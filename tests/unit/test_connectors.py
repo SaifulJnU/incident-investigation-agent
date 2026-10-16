@@ -58,6 +58,27 @@ def test_connectors_override_the_env_default():
     assert enabled_connectors("local", ("cloudwatch",)) == ("cloudwatch",)
 
 
+def test_cloudwatch_client_bounds_the_call(monkeypatch):
+    captured = {}
+
+    def fake_client(service, **kwargs):
+        captured["service"] = service
+        captured["kwargs"] = kwargs
+        return object()
+
+    import boto3
+
+    monkeypatch.setattr(boto3, "client", fake_client)
+    from incident_investigation_agent.infrastructure.connectors.cloudwatch import logs_client
+
+    logs_client("us-west-2", timeout=12)
+    assert captured["service"] == "logs"
+    config = captured["kwargs"]["config"]
+    assert config.connect_timeout == 12
+    assert config.read_timeout == 12
+    assert config.retries["max_attempts"] == 2
+
+
 def test_cloudwatch_reports_a_missing_log_group():
     result = search_cloudwatch_logs(_settings(app_env="prod"), "checkout-api", "timeout", 5)
     assert "CLOUDWATCH_LOG_GROUP_PREFIX" in result
@@ -72,7 +93,7 @@ def test_cloudwatch_reads_the_mapped_group(monkeypatch):
 
     monkeypatch.setattr(
         "incident_investigation_agent.infrastructure.connectors.cloudwatch.logs_client",
-        lambda region, endpoint_url="": _Client(),
+        lambda region, endpoint_url="", timeout=15: _Client(),
     )
     settings = _settings(app_env="prod", cloudwatch_log_group_prefix="/aws/ecs/")
     result = search_cloudwatch_logs(settings, "checkout-api", "timeout", 5)

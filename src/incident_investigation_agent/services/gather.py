@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import re
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from incident_investigation_agent.core.config import Settings, enabled_connectors
-from incident_investigation_agent.core.logging import in_context
 from incident_investigation_agent.infrastructure.connectors import (
     cloudwatch,
     datadog,
@@ -120,6 +121,7 @@ _STATUS = (
     "no commits on ",
     "must be a label",
     "must be an https",
+    "the call did not finish",
 )
 _MISS = (
     "no lines matched",
@@ -152,9 +154,7 @@ def gather(settings: Settings, service: str | None, hint: str = "") -> SearchBat
         batch = SearchBatch("No connectors are enabled.", ())
         _log_search(names, batch)
         return batch
-    ready = [in_context(job) for job in jobs]
-    with ThreadPoolExecutor(max_workers=min(8, len(ready))) as pool:
-        blocks = list(pool.map(lambda job: job(), ready))
+    blocks = _collect(jobs, settings.connector_timeout_seconds)
     batch = _combine(blocks)
     _log_search(names, batch)
     return batch
@@ -220,6 +220,13 @@ def _fold(word: str) -> str:
     return word
 
 
+@dataclass(frozen=True)
+class _Job:
+    label: str
+    query: str
+    call: object
+
+
 def _jobs(settings: Settings, service: str | None, names: tuple[str, ...], queries: tuple[str, ...]):
     jobs = []
     searchers = {
@@ -230,18 +237,85 @@ def _jobs(settings: Settings, service: str | None, names: tuple[str, ...], queri
     }
     for name in names:
         if name == "github":
-            jobs.append(lambda: ("list_recent_commits", "", github.list_commits(settings, service)))
+            jobs.append(_Job("list_recent_commits", "", lambda: github.list_commits(settings, service)))
             continue
         label, function = searchers[name]
         for query in queries:
             jobs.append(
-                lambda label=label, query=query, function=function: (
+                _Job(
                     label,
                     query,
-                    function(settings, service, query, 20),
+                    lambda query=query, function=function: function(settings, service, query, 20),
                 )
             )
     return jobs
+
+
+def _collect(jobs: list[_Job], timeout: float) -> list[tuple[str, str, str]]:
+    """Run every search, and stop waiting when one call passes the timeout.
+
+    The pool worker joins a daemon thread. A stuck socket cannot hold that
+    worker, or the investigation, until the run timeout. The other sources
+    are kept.
+    """
+    workers = min(8, len(jobs))
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
+        futures = [_submit(pool, job.call, timeout) for job in jobs]
+        bodies = [future.result() for future in futures]
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
+    blocks: list[tuple[str, str, str]] = []
+    for job, body in zip(jobs, bodies):
+        if body is None:
+            log.warning(
+                "search timed out source=%s query=%s seconds=%s",
+                job.label,
+                job.query or "-",
+                timeout,
+            )
+            blocks.append((job.label, job.query, _timeout_text(job.label, timeout)))
+            continue
+        blocks.append((job.label, job.query, body))
+    return blocks
+
+
+def _submit(pool: ThreadPoolExecutor, call, timeout: float):
+    """Copy the case and run on this thread, then hand the copy to the pool."""
+    context = contextvars.copy_context()
+    return pool.submit(_wait, context, call, timeout)
+
+
+def _wait(context: contextvars.Context, call, timeout: float):
+    holder: dict[str, object] = {}
+
+    def run() -> None:
+        try:
+            holder["value"] = context.run(call)
+        except Exception as exc:
+            holder["error"] = exc
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    if "error" in holder:
+        raise holder["error"]
+    if "value" in holder:
+        return holder["value"]
+    return None
+
+
+def _timeout_text(label: str, timeout: float) -> str:
+    prefix = {
+        "search_logs": "Log search failed",
+        "search_cloudwatch": "CloudWatch search failed",
+        "search_datadog": "Datadog search failed",
+        "search_loki": "Loki search failed",
+        "list_recent_commits": "Commit list failed",
+    }.get(label, "Search failed")
+    seconds = int(timeout) if float(timeout).is_integer() else timeout
+    unit = "second" if seconds == 1 else "seconds"
+    return f"{prefix}: the call did not finish within {seconds} {unit}."
 
 
 def _combine(blocks: list[tuple[str, str, str]]) -> SearchBatch:

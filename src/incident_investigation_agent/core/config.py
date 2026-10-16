@@ -133,6 +133,7 @@ class Settings:
     github_org: str = ""
     github_repos: str = ""
     github_lookback_hours: int = 24
+    connector_timeout_seconds: int = 15
     run_timeout_minutes: int = 20
 
     @property
@@ -217,5 +218,6 @@ class Settings:
             github_org=_env("GITHUB_ORG", ""),
             github_repos=_env("GITHUB_REPOS", ""),
             github_lookback_hours=_int_env("GITHUB_LOOKBACK_HOURS", 24, 1, 168),
+            connector_timeout_seconds=_int_env("CONNECTOR_TIMEOUT_SECONDS", 15, 1, 60),
             run_timeout_minutes=_int_env("RUN_TIMEOUT_MINUTES", 20, 1, 240),
         )

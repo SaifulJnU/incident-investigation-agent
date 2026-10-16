@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from incident_investigation_agent.core.config import Settings
@@ -157,6 +158,28 @@ def test_a_log_line_that_says_search_failed_is_kept():
     assert batch.misses == ("search_loki timeout",)
 
 
+def test_a_hung_connector_fails_that_source_and_keeps_the_others(tmp_path, monkeypatch):
+    def search(_settings, _service, query, _limit):
+        if query == "timeout":
+            time.sleep(8)
+            return "api.log:1: should not be kept"
+        return "api.log:1: ERROR status=500 disk"
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.gather.local_logs.search_local_logs",
+        search,
+    )
+    settings = _settings(tmp_path, connectors=("local_logs",), connector_timeout_seconds=1)
+    started = time.perf_counter()
+    batch = gather(settings, "checkout-api")
+    elapsed = time.perf_counter() - started
+    assert elapsed < 4
+    assert any("status=500" in item.summary for item in batch.findings)
+    assert "should not be kept" not in batch.text
+    assert any("did not finish within 1 second" in line for line in batch.unchecked)
+    assert all("should not be kept" not in item.summary for item in batch.findings)
+
+
 def test_note_prompt_leads_with_each_match_once():
     prompt = "Incident: Checkout\nStart by calling search_logs. Do not write the incident note."
     batch = SearchBatch(
@@ -177,7 +200,7 @@ def test_note_prompt_leads_with_each_match_once():
     assert note.endswith("Write the incident note from these lines.")
 
 
-def _settings(log_dir: Path, connectors: tuple[str, ...]) -> Settings:
+def _settings(log_dir: Path, connectors: tuple[str, ...], connector_timeout_seconds: int = 15) -> Settings:
     return Settings(
         model_provider="ollama",
         ollama_host="http://localhost:11434",
@@ -189,4 +212,5 @@ def _settings(log_dir: Path, connectors: tuple[str, ...]) -> Settings:
         database_url="sqlite+pysqlite://",
         app_env="local",
         connectors=connectors,
+        connector_timeout_seconds=connector_timeout_seconds,
     )

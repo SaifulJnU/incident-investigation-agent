@@ -52,7 +52,11 @@ def list_commits(settings: Settings, service: str | None, limit: int = 10) -> st
         "X-GitHub-Api-Version": "2022-11-28",
     }
     try:
-        body = request_json(url, headers=headers)
+        body = request_json(
+            url,
+            headers=headers,
+            timeout=settings.connector_timeout_seconds,
+        )
     except ConnectorError as exc:
         return f"GitHub commit list failed for {repo}: {exc}"
     if not isinstance(body, list) or not body:
