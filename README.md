@@ -4,7 +4,7 @@ On-call engineers lose the first minutes of an incident to the same hunt: CloudW
 
 The alert system still pages. This service writes the investigation. The numbers on the diagram are the order.
 
-<img src="docs/system-design.png" alt="System design of Case file. An on-call engineer clicks Investigate. The API checks the token and either queues a run or returns 409. Postgres holds the case and the queue. A worker claims the run, plans searches, fans out across CloudWatch, Datadog, Loki, and GitHub, keeps the evidence, and a note model writes the incident note. The worker is read-only." width="1000">
+<img src="docs/system-design.jpg" alt="System design of Case file. An on-call engineer clicks Investigate. The API checks the token and either queues a run or returns 409. Postgres holds the case and the queue. A worker claims the run, plans searches from the brief, fans out across CloudWatch, Datadog, Loki, and GitHub, keeps the evidence, and a note model writes the incident note. The worker is read-only." width="1000">
 
 ## One investigation
 
