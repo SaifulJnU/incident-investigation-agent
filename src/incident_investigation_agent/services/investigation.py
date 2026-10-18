@@ -6,7 +6,7 @@ import logging
 import time
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from incident_investigation_agent.core.config import Settings
@@ -38,8 +38,7 @@ def release_stale_runs(session: Session, *, older_than_minutes: int) -> int:
             )
         ).all()
     )
-    _fail_abandoned(session, runs, reason="timeout")
-    return len(runs)
+    return _fail_abandoned(session, runs, reason="timeout")
 
 
 def release_held_runs(session: Session, run_ids) -> int:
@@ -60,22 +59,39 @@ def release_held_runs(session: Session, run_ids) -> int:
             )
         ).all()
     )
-    _fail_abandoned(session, runs, reason="worker-stopped")
-    return len(runs)
+    return _fail_abandoned(session, runs, reason="worker-stopped")
 
 
-def _fail_abandoned(session: Session, runs, *, reason: str) -> None:
+def _fail_abandoned(session: Session, runs, *, reason: str) -> int:
+    """Fail runs that are still running. A finished note stays as it is."""
     now = utcnow()
+    released = 0
     for run in runs:
-        run.status = "failed"
-        run.error = "The worker stopped before this run finished."
-        run.finished_at = now
+        matched = session.scalars(
+            update(InvestigationRun)
+            .where(
+                InvestigationRun.id == run.id,
+                InvestigationRun.status == "running",
+            )
+            .values(
+                status="failed",
+                error="The worker stopped before this run finished.",
+                finished_at=now,
+            )
+            .returning(InvestigationRun.id)
+            .execution_options(synchronize_session=False)
+        ).first()
+        session.expire(run)
+        if matched is None:
+            continue
+        released += 1
         incident = session.get(Incident, run.incident_id)
         if incident is not None and incident.status == "investigating":
             incident.status = "open"
             incident.updated_at = now
         with bind_investigation(run.incident_id, run.id):
             log.info("investigation released reason=%s", reason)
+    return released
 
 
 def claim_next(session: Session) -> InvestigationRun | None:
@@ -120,40 +136,53 @@ def claim_batch(session: Session, limit: int) -> list[InvestigationRun]:
 
 
 def execute(factory: sessionmaker[Session], settings: Settings, run_id, investigate=None) -> None:
+    model_name = (
+        settings.ollama_model if settings.model_provider == "ollama" else settings.bedrock_model_id
+    )
     with factory() as session:
-        run = session.get(InvestigationRun, run_id)
-        if run is None or run.status in {"completed", "failed"}:
+        now = utcnow()
+        incident_id = session.scalars(
+            update(InvestigationRun)
+            .where(
+                InvestigationRun.id == run_id,
+                InvestigationRun.status.notin_(("completed", "failed")),
+            )
+            .values(
+                status="running",
+                started_at=func.coalesce(InvestigationRun.started_at, now),
+                provider=settings.model_provider,
+                model_name=model_name,
+            )
+            .returning(InvestigationRun.incident_id)
+            .execution_options(synchronize_session=False)
+        ).first()
+        if incident_id is None:
+            session.rollback()
             return
-        incident = session.get(Incident, run.incident_id)
+        incident = session.get(Incident, incident_id)
         if incident is None:
-            run.status = "failed"
-            run.error = "Case not found."
-            run.finished_at = utcnow()
+            session.rollback()
+            missing = True
+        else:
+            missing = False
+            if incident.status == "open":
+                incident.status = "investigating"
+                incident.updated_at = now
+            brief = IncidentBrief(
+                title=incident.title,
+                service=incident.service,
+                severity=incident.severity,
+                summary=incident.summary,
+                started_at=incident.started_at,
+            )
+            service_name = incident.service
             session.commit()
-            with bind_investigation(None, run_id):
-                log.error("investigation failed reason=case-not-found")
-            return
-        run.status = "running"
-        run.started_at = run.started_at or utcnow()
-        run.provider = settings.model_provider
-        run.model_name = (
-            settings.ollama_model
-            if settings.model_provider == "ollama"
-            else settings.bedrock_model_id
-        )
-        if incident.status == "open":
-            incident.status = "investigating"
-            incident.updated_at = utcnow()
-        brief = IncidentBrief(
-            title=incident.title,
-            service=incident.service,
-            severity=incident.severity,
-            summary=incident.summary,
-            started_at=incident.started_at,
-        )
-        incident_id = incident.id
-        service_name = incident.service
-        session.commit()
+
+    if missing:
+        with bind_investigation(None, run_id):
+            log.error("investigation failed reason=case-not-found")
+        _finish(factory, run_id, status="failed", error="Case not found.")
+        return
 
     store = DbCaseStore(factory, incident_id)
     prompt = investigation_prompt(brief, store.list())
@@ -236,18 +265,31 @@ def _finish(
     report: str | None = None,
     error: str | None = None,
 ) -> bool:
+    """Store this outcome once. A later finish leaves the first note in place."""
     with factory() as session:
-        run = session.get(InvestigationRun, run_id)
-        if run is None or run.status in {"completed", "failed"}:
+        now = utcnow()
+        incident_id = session.scalars(
+            update(InvestigationRun)
+            .where(
+                InvestigationRun.id == run_id,
+                InvestigationRun.status.notin_(("completed", "failed")),
+            )
+            .values(
+                status=status,
+                report=report,
+                error=error,
+                finished_at=now,
+            )
+            .returning(InvestigationRun.incident_id)
+            .execution_options(synchronize_session=False)
+        ).first()
+        if incident_id is None:
+            session.rollback()
             return False
-        incident = session.get(Incident, run.incident_id)
-        run.status = status
-        run.report = report
-        run.error = error
-        run.finished_at = utcnow()
+        incident = session.get(Incident, incident_id)
         if incident is not None and incident.status == "investigating":
             incident.status = "open"
-            incident.updated_at = utcnow()
+            incident.updated_at = now
         session.commit()
         return True
 

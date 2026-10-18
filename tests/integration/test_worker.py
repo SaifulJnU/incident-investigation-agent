@@ -184,6 +184,81 @@ def test_a_deploy_releases_the_run_this_worker_holds():
     assert cases["payments-api"] == "investigating"
 
 
+def test_a_second_finish_leaves_the_first_note():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        incident = open_incident(
+            session,
+            title="Checkout errors",
+            summary="500s after the deploy.",
+            service="checkout-api",
+            severity="sev1",
+            started_at=utcnow(),
+        )
+        run = queue_run(session, incident, provider="ollama", model_name="llama3.1")
+        run_id = run.id
+        session.commit()
+
+    def first(_settings, _store, _prompt, _service):
+        return "Leading cause: vault timeout."
+
+    def second(_settings, _store, _prompt, _service):
+        return "Leading cause: a later guess."
+
+    execute(factory, _settings(), run_id, first)
+    execute(factory, _settings(), run_id, second)
+
+    with factory() as session:
+        finished = session.get(InvestigationRun, run_id)
+        incident = session.scalars(select(Incident)).one()
+    assert finished.status == "completed"
+    assert finished.report == "Leading cause: vault timeout."
+    assert finished.error is None
+    assert incident.status == "open"
+
+
+def test_a_note_written_while_the_model_runs_is_kept():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        incident = open_incident(
+            session,
+            title="Checkout errors",
+            summary="500s after the deploy.",
+            service="checkout-api",
+            severity="sev1",
+            started_at=utcnow(),
+        )
+        run = queue_run(session, incident, provider="ollama", model_name="llama3.1")
+        run_id = run.id
+        session.commit()
+
+    def investigate(_settings, _store, _prompt, _service):
+        from incident_investigation_agent.services.investigation import _finish
+
+        assert _finish(factory, run_id, status="completed", report="Leading cause: vault timeout.")
+        return "This note arrived after the first write."
+
+    execute(factory, _settings(), run_id, investigate)
+
+    with factory() as session:
+        finished = session.get(InvestigationRun, run_id)
+    assert finished.status == "completed"
+    assert finished.report == "Leading cause: vault timeout."
+    assert finished.error is None
+
+
 def test_stopping_during_the_note_does_not_put_the_run_back():
     engine = create_engine(
         "sqlite+pysqlite://",

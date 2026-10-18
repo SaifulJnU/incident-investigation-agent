@@ -191,7 +191,7 @@ A person marks `mitigated` and `resolved`. The worker does not. If a person has 
 | `running` | `completed` | `finished_at`, `report` |
 | `running` | `failed` | `finished_at`, `error` |
 
-A missing parent case at execution time sets the run to `failed` with `error` = `Case not found.`
+The first `completed` or `failed` wins. A later finish does not replace `report` or `error`. A missing parent case at execution time sets the run to `failed` with `error` = `Case not found.`
 
 Finished runs stay on the case. A later Investigate inserts a new row. The partial unique index rejects a second `queued` or `running` row for the same `incident_id`. The API turns that integrity error into HTTP 409.
 
@@ -233,8 +233,8 @@ The engineer clicks Investigate. The HTTP request does not wait for the model.
 | Worker claims | that row becomes `running`; if the incident is `open`, it becomes `investigating` |
 | Agent calls `record_evidence` | `evidence` insert on the same `incident_id`. `kind` is one of the five allowed values. `source` is whatever the model passed, default `operator` |
 | Agent calls `search_logs` | no database write. Matching lines stay in the tool result |
-| Success | run `status` = `completed`, `report` = the note, `finished_at` set. Incident returns to `open` if it is still `investigating` |
-| Failure | run `status` = `failed`, `error` set, `report` left null. Same incident status rule |
+| Success | run `status` = `completed`, `report` = the note, `finished_at` set. Incident returns to `open` if it is still `investigating`. A second success leaves that note |
+| Failure | run `status` = `failed`, `error` set, `report` left null. Same incident status rule. A second finish leaves this error |
 
 Relation used: one incident, many evidence rows, exactly one active run. Log lines quoted in `report` or in an evidence `summary` are not a foreign key to a log store.
 
