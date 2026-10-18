@@ -105,6 +105,18 @@ class IncidentOut(BaseModel):
     resolved_at: datetime | None
 
 
+class StatusChangeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    from_status: Status | None
+    to_status: Status
+    actor: str
+    actor_name: str
+    changed_at: datetime
+
+
 class IncidentDetail(IncidentOut):
     evidence: list[EvidenceOut]
     runs: list[RunOut]
+    status_changes: list[StatusChangeOut]

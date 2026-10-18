@@ -14,7 +14,7 @@ from incident_investigation_agent.core.logging import bind_investigation
 from incident_investigation_agent.db.models import Incident, InvestigationRun, WorkerBeat, utcnow
 from incident_investigation_agent.db.session import database_ready
 from incident_investigation_agent.infrastructure.redact import configured_secrets, redact
-from incident_investigation_agent.repositories.cases import DbCaseStore
+from incident_investigation_agent.repositories.cases import DbCaseStore, move_status
 from incident_investigation_agent.services.agent import build_note_agent
 from incident_investigation_agent.services.gather import SearchBatch, gather
 from incident_investigation_agent.services.report import IncidentBrief, investigation_prompt, message_text
@@ -87,8 +87,7 @@ def _fail_abandoned(session: Session, runs, *, reason: str) -> int:
         released += 1
         incident = session.get(Incident, run.incident_id)
         if incident is not None and incident.status == "investigating":
-            incident.status = "open"
-            incident.updated_at = now
+            move_status(session, incident, "open", actor="worker", actor_name="Worker", at=now)
         with bind_investigation(run.incident_id, run.id):
             log.info("investigation released reason=%s", reason)
     return released
@@ -104,12 +103,13 @@ def claim_next(session: Session) -> InvestigationRun | None:
     ).first()
     if run is None:
         return None
+    now = utcnow()
     run.status = "running"
-    run.started_at = utcnow()
+    run.started_at = now
     incident = session.get(Incident, run.incident_id)
     if incident is not None and incident.status == "open":
-        incident.status = "investigating"
-        incident.updated_at = utcnow()
+        actor, name = _requester(run)
+        move_status(session, incident, "investigating", actor=actor, actor_name=name, at=now)
     return run
 
 
@@ -130,8 +130,8 @@ def claim_batch(session: Session, limit: int) -> list[InvestigationRun]:
         run.started_at = now
         incident = session.get(Incident, run.incident_id)
         if incident is not None and incident.status == "open":
-            incident.status = "investigating"
-            incident.updated_at = now
+            actor, name = _requester(run)
+            move_status(session, incident, "investigating", actor=actor, actor_name=name, at=now)
     return runs
 
 
@@ -166,8 +166,8 @@ def execute(factory: sessionmaker[Session], settings: Settings, run_id, investig
         else:
             missing = False
             if incident.status == "open":
-                incident.status = "investigating"
-                incident.updated_at = now
+                actor, name = _requester(session.get(InvestigationRun, run_id))
+                move_status(session, incident, "investigating", actor=actor, actor_name=name, at=now)
             brief = IncidentBrief(
                 title=incident.title,
                 service=incident.service,
@@ -288,10 +288,18 @@ def _finish(
             return False
         incident = session.get(Incident, incident_id)
         if incident is not None and incident.status == "investigating":
-            incident.status = "open"
-            incident.updated_at = now
+            move_status(session, incident, "open", actor="worker", actor_name="Worker", at=now)
         session.commit()
         return True
+
+
+def _requester(run: InvestigationRun | None) -> tuple[str, str]:
+    """The person who clicked Investigate, or the worker when that person is unknown."""
+    subject = (run.requested_by if run is not None else "").strip()
+    name = (run.requested_by_name if run is not None else "").strip()
+    if subject or name:
+        return subject, name
+    return "worker", "Worker"
 
 
 def wait_for_database(factory: sessionmaker[Session]) -> None:

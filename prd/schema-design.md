@@ -2,7 +2,7 @@
 
 Product: Case file  
 Database: PostgreSQL 16  
-Schema revision: `0004_worker_beat`  
+Schema revision: `0005_status_history`  
 Status: implemented
 
 This document is the contract for the case record. The console, API, and worker all read and write these tables. External systems (logs, CloudWatch, Datadog, GitHub) are not copied into this database. A tool returns a result, and the case keeps only the short fact that was recorded.
@@ -11,12 +11,13 @@ The CLI path that writes `.case/case.json` is outside this schema.
 
 ## 1. Relations
 
-An incident is the root. Evidence and investigation runs belong to exactly one incident. Deleting an incident deletes its evidence and its runs.
+An incident is the root. Evidence, investigation runs, and status changes belong to exactly one incident. Deleting an incident deletes its evidence, its runs, and its status history.
 
 ```mermaid
 erDiagram
   INCIDENTS ||--o{ EVIDENCE : "has"
   INCIDENTS ||--o{ INVESTIGATION_RUNS : "has"
+  INCIDENTS ||--o{ STATUS_CHANGES : "has"
 
   INCIDENTS {
     uuid id PK
@@ -51,12 +52,23 @@ erDiagram
     timestamptz started_at
     timestamptz finished_at
   }
+
+  STATUS_CHANGES {
+    uuid id PK
+    uuid incident_id FK
+    string from_status
+    string to_status
+    string actor
+    string actor_name
+    timestamptz changed_at
+  }
 ```
 
 | Relation | Cardinality | Rule |
 | --- | --- | --- |
 | Incident to evidence | 1 to 0..n | `evidence.incident_id` references `incidents.id` with `ON DELETE CASCADE` |
 | Incident to investigation run | 1 to 0..n | `investigation_runs.incident_id` references `incidents.id` with `ON DELETE CASCADE` |
+| Incident to status change | 1 to 0..n | `status_changes.incident_id` references `incidents.id` with `ON DELETE CASCADE`. One row per status edit, oldest first |
 | Incident to active run | 1 to 0..1 | Partial unique index `uq_incident_active_run` on `incident_id` where `status IN ('queued', 'running')` |
 | Evidence to run | none | A fact belongs to the case, not to the run that found it. `source` records who wrote it |
 
@@ -165,6 +177,24 @@ One row for the worker process. It is not part of a case. The worker updates `be
 
 A stopped worker deletes its row. A crash cannot, so the row stays until `beat_at` is older than 20 seconds.
 
+### 2.5 `status_changes`
+
+One row each time the case status changes. `incidents` still stores the latest opener, mitigator, and resolver. This table keeps the earlier edits.
+
+| Column | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `id` | `uuid` | no | Primary key |
+| `incident_id` | `uuid` | no | Parent case |
+| `from_status` | `varchar(20)` | yes | Status before this edit. Null when the case is opened |
+| `to_status` | `varchar(20)` | no | `open`, `investigating`, `mitigated`, or `resolved` |
+| `actor` | `varchar(200)` | no | Subject of the person, or `worker` when the worker moved the case |
+| `actor_name` | `varchar(200)` | no | Display name. `Worker` when the worker moved the case |
+| `changed_at` | `timestamptz` | no | When this edit was written |
+
+Checks: `ck_status_change_from`, `ck_status_change_to`. Index: `ix_status_changes_incident_id`.
+
+The case detail returns these rows ordered by `changed_at` ascending. A second write of the same status does not insert a row. A case opened before this table existed has no backfilled rows.
+
 ## 3. State
 
 Two independent state fields. The database checks the allowed values. The application decides which value is written.
@@ -179,6 +209,8 @@ Two independent state fields. The database checks the allowed values. The applic
 | any allowed value | `open`, `investigating`, `mitigated`, or `resolved` | A person, through `PATCH /api/incidents/{id}` |
 
 A person marks `mitigated` and `resolved`. The worker does not. If a person has already moved the case off `investigating` before the run finishes, the worker leaves that status in place.
+
+Each of those writes also inserts `status_changes`. Moving to `investigating` records the person who clicked Investigate when that subject is on the run, and `worker` when it is not. Moving back to `open` after a run records `worker`.
 
 `POST /api/incidents/{id}/investigate` returns 409 when `status` is `resolved`, and when an active run already exists.
 
@@ -206,6 +238,7 @@ Harbor and Co. checkout starts returning HTTP 500 after payments-api 1.42.0. The
 | Write | Value |
 | --- | --- |
 | `incidents` insert | `service` = `checkout-api`, `severity` = `sev1`, `status` = `open`, `started_at` = 14:02 UTC, `summary` = the symptom they typed, `opened_by` = the signed-in subject |
+| `status_changes` insert | `from_status` null, `to_status` = `open`, `actor` = that same subject |
 | `evidence` | none yet |
 | `investigation_runs` | none yet |
 
@@ -257,6 +290,7 @@ The engineer rolls back and marks the case mitigated, then resolved when the err
 | --- | --- |
 | `incidents.status` | `mitigated`, later `resolved` |
 | `incidents.updated_at` | time of the patch |
+| `status_changes` insert | one row for `mitigated`, then one row for `resolved`, each with that person's subject |
 | `investigation_runs` | unchanged. The note remains the record of what the agent concluded |
 
 A resolved case cannot queue another run until a person changes `status` away from `resolved`.
@@ -283,10 +317,10 @@ Company A and Company B run the same images. Each has its own PostgreSQL databas
 | --- | --- |
 | Log files, metrics, commits | Company systems, reached by tools. Not replicated here |
 | Model transcript and tool-call trace | Not persisted. Only `report` and evidence rows are kept |
-| A history of every status edit | Not stored. `opened_by` and `requested_by` record who opened the case and who clicked Investigate |
+| A history of every status edit | `status_changes`. `opened_by`, `mitigated_by`, and `resolved_by` still store the latest actor |
 | Approval before a write to GitHub, Kubernetes, or Datadog | Not in this schema. Those writes are out of product scope |
 | Multi-tenant company id | Out of scope. One deployment, one database |
 
 ## 6. Revision
 
-`alembic/versions/0001_case_file.py` creates the three tables, the four check constraints, the foreign keys, and the indexes in section 2. `0002_actors` adds `incidents.opened_by` and `investigation_runs.requested_by`. `0003_case_actors` adds the display names, who mitigated or resolved the case, and an index on `incidents.status` for the case list filter. `0004_worker_beat` adds `worker_beats`. The API image runs `alembic upgrade head` before it serves traffic. The worker waits until `investigation_runs` and `worker_beats` can be selected.
+`alembic/versions/0001_case_file.py` creates the three tables, the four check constraints, the foreign keys, and the indexes in section 2. `0002_actors` adds `incidents.opened_by` and `investigation_runs.requested_by`. `0003_case_actors` adds the display names, who mitigated or resolved the case, and an index on `incidents.status` for the case list filter. `0004_worker_beat` adds `worker_beats`. `0005_status_history` adds `status_changes`. The API image runs `alembic upgrade head` before it serves traffic. The worker waits until `investigation_runs` and `worker_beats` can be selected.

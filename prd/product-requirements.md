@@ -28,7 +28,7 @@ Any company can run one Case file deployment for its own incidents.
 | On-call engineer | Opens a case, adds what they already know, clicks Investigate, reads the note, marks mitigated or resolved |
 | Incident lead | Reads the same case during the bridge and corrects the record |
 | Platform owner | Installs the stack, chooses the model, and enables tool plugins for that company |
-| Auditor | Reads `opened_by` and `requested_by`. A full history of every status edit is not stored yet |
+| Auditor | Reads each status change: who moved the case, from which status, and when. The case also stores the latest opener, mitigator, and resolver |
 
 ## 4. What exists today
 

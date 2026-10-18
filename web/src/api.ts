@@ -45,9 +45,19 @@ export interface Run {
   requested_by_name: string;
 }
 
+export interface StatusChange {
+  id: string;
+  from_status: CaseStatus | null;
+  to_status: CaseStatus;
+  actor: string;
+  actor_name: string;
+  changed_at: string;
+}
+
 export interface IncidentDetail extends Incident {
   evidence: Evidence[];
   runs: Run[];
+  status_changes: StatusChange[];
 }
 
 export interface NewCase {

@@ -44,7 +44,7 @@ flowchart TB
 | Web | Static console. Proxies `/api` to the API. Sends the bearer token |
 | API | Checks the token and the service grant, then cases, notes, status, and queues an investigation. Does not call the model |
 | Worker | Claims a queued run, calls the agent, stores the note |
-| Postgres | Cases, evidence, runs. Also the job queue, using a row status and `FOR UPDATE SKIP LOCKED` |
+| Postgres | Cases, evidence, runs, and each status change. Also the job queue, using a row status and `FOR UPDATE SKIP LOCKED` |
 | Strands agent | Loop: send the case, run a tool the model asked for, send the tool result back |
 | Model plugin | Ollama or Bedrock |
 | Tool plugins | Case file, plus `APP_ENV=local` log folder or `APP_ENV=prod` CloudWatch, Datadog, Loki, and GitHub |
@@ -150,9 +150,12 @@ evidence
 investigation_runs
   incident_id, status, provider, model_name, report, error
   status: queued | running | completed | failed
+
+status_changes
+  incident_id, from_status, to_status, actor, actor_name, changed_at
 ```
 
-One case may have many runs. The console shows the latest. One case may have at most one queued or running run.
+One case may have many runs. The console shows the latest. One case may have at most one queued or running run. Each status edit is kept. The incident row still stores the latest opener, mitigator, and resolver.
 
 External systems are not copied into Postgres wholesale. A plugin returns the lines or commits the model asked for, and `record_evidence` stores the short fact the model decided to keep.
 

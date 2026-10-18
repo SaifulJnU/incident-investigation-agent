@@ -24,7 +24,7 @@ The worker searches and records. It cannot commit, push, restart, or roll back.
 | Measure | What the product records |
 | --- | --- |
 | Time to a note | Each run moves from queued to running to completed or failed, with a start and a finish |
-| Who acted | Name and login for open, investigate, mitigate, and resolve |
+| Who acted | Each status change keeps the name and login. The case also stores the latest opener, mitigator, and resolver |
 | Scope | One service per case. A checkout case cannot read payments logs |
 | Outcome | Open, investigating, mitigated, or resolved, with counts on the case list |
 | Evidence | Symptoms, log lines, timeline entries, changes, and hypotheses, kept apart from the prose note |
@@ -44,7 +44,8 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 | Trace | Worker lines for one run end with that case id and that run id |
 | Search bound | A connector call that does not finish is failed for that source. The other sources are kept. The run does not stay in progress until the 20-minute timeout |
 | Stored errors | A failed run keeps the error with tokens and configured secrets replaced. A connector failure that is not an HTTP response is stored the same way |
-| Tests | 77 automated tests for access, connectors, the API, and the worker |
+| Status history | Open, investigating, mitigated, and resolved are kept in order. A finished run records the return to open. A later edit does not erase the earlier one |
+| Tests | 79 automated tests for access, connectors, the API, and the worker |
 | Stack | Python, FastAPI, Postgres, Alembic, React |
 
 ## Run it

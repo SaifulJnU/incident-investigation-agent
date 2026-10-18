@@ -30,9 +30,11 @@ from incident_investigation_agent.repositories.cases import (
     get_incident,
     incident_counts,
     list_incidents,
+    move_status,
     open_incident,
     queue_run,
     runs_for,
+    status_changes_for,
 )
 
 router = APIRouter()
@@ -97,7 +99,7 @@ def update_incident(
 ):
     incident = _require(session, incident_id, principal)
     if body.status is not None:
-        _mark(incident, body.status, principal)
+        _mark(session, incident, body.status, principal)
     if body.severity is not None:
         incident.severity = body.severity
     if body.summary is not None:
@@ -198,6 +200,17 @@ def _detail(session: Session, incident):
         "resolved_by": incident.resolved_by,
         "resolved_by_name": incident.resolved_by_name,
         "resolved_at": incident.resolved_at,
+        "status_changes": [
+            {
+                "id": change.id,
+                "from_status": change.from_status,
+                "to_status": change.to_status,
+                "actor": change.actor,
+                "actor_name": change.actor_name,
+                "changed_at": change.changed_at,
+            }
+            for change in status_changes_for(session, incident.id)
+        ],
         "evidence": [
             {
                 "id": item.id,
@@ -238,7 +251,7 @@ def _actor(principal: Principal) -> str:
     return label[:200]
 
 
-def _mark(incident, status: str, principal: Principal) -> None:
+def _mark(session: Session, incident, status: str, principal: Principal) -> None:
     """A person may close a case. They cannot reopen it or claim the worker's status."""
     if incident.status == "resolved":
         raise HTTPException(status_code=409, detail="This case is resolved.")
@@ -249,7 +262,13 @@ def _mark(incident, status: str, principal: Principal) -> None:
         )
     if status == incident.status:
         raise HTTPException(status_code=409, detail="This case is already mitigated.")
-    incident.status = status
+    move_status(
+        session,
+        incident,
+        status,
+        actor=principal.subject,
+        actor_name=principal.name,
+    )
     if status == "mitigated":
         incident.mitigated_by = principal.subject
         incident.mitigated_by_name = principal.name

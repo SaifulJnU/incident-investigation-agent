@@ -6,7 +6,14 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from incident_investigation_agent.core.config import Settings
-from incident_investigation_agent.db.models import Base, EvidenceItem, Incident, InvestigationRun, utcnow
+from incident_investigation_agent.db.models import (
+    Base,
+    EvidenceItem,
+    Incident,
+    InvestigationRun,
+    StatusChange,
+    utcnow,
+)
 from incident_investigation_agent.repositories.cases import open_incident, queue_run
 from incident_investigation_agent.services.investigation import (
     execute,
@@ -58,10 +65,18 @@ def test_execute_stores_the_note_and_reopens_the_case():
         finished = session.get(InvestigationRun, run_id)
         incident = session.scalars(select(Incident)).one()
         evidence = session.scalars(select(EvidenceItem)).all()
+        changes = session.scalars(
+            select(StatusChange).order_by(StatusChange.changed_at, StatusChange.id)
+        ).all()
     assert finished.status == "completed"
     assert finished.report == "Leading cause: vault timeout."
     assert incident.status == "open"
     assert evidence[0].summary == "The card vault timed out."
+    assert [(item.from_status, item.to_status, item.actor) for item in changes] == [
+        (None, "open", ""),
+        ("open", "investigating", "worker"),
+        ("investigating", "open", "worker"),
+    ]
 
 
 def test_execute_records_a_failure():

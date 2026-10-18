@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from incident_investigation_agent.db.models import EvidenceItem, Incident, InvestigationRun, utcnow
+from incident_investigation_agent.db.models import EvidenceItem, Incident, InvestigationRun, StatusChange, utcnow
 from incident_investigation_agent.domain.evidence import Evidence
 
 
@@ -137,7 +137,56 @@ def open_incident(
     )
     session.add(incident)
     session.flush()
+    session.add(
+        StatusChange(
+            incident_id=incident.id,
+            from_status=None,
+            to_status="open",
+            actor=(opened_by or "")[:200],
+            actor_name=(opened_by_name or "")[:200],
+            changed_at=incident.created_at,
+        )
+    )
+    session.flush()
     return incident
+
+
+def move_status(
+    session: Session,
+    incident: Incident,
+    status: str,
+    *,
+    actor: str,
+    actor_name: str,
+    at: datetime | None = None,
+) -> bool:
+    """Append one status edit. The same status again writes nothing."""
+    if incident.status == status:
+        return False
+    when = at or utcnow()
+    session.add(
+        StatusChange(
+            incident_id=incident.id,
+            from_status=incident.status,
+            to_status=status,
+            actor=(actor or "")[:200],
+            actor_name=(actor_name or "")[:200],
+            changed_at=when,
+        )
+    )
+    incident.status = status
+    incident.updated_at = when
+    return True
+
+
+def status_changes_for(session: Session, incident_id: uuid.UUID) -> list[StatusChange]:
+    return list(
+        session.scalars(
+            select(StatusChange)
+            .where(StatusChange.incident_id == incident_id)
+            .order_by(StatusChange.changed_at, StatusChange.id)
+        ).all()
+    )
 
 
 def add_evidence(

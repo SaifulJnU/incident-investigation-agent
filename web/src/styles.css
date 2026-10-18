@@ -707,6 +707,10 @@ button:disabled {
   font-weight: 500;
 }
 
+.status-history {
+  margin-top: 1.15rem;
+}
+
 .summary {
   font-family: "Literata", "Iowan Old Style", Georgia, serif;
   font-size: 1.08rem;

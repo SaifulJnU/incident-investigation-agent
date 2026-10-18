@@ -252,6 +252,12 @@ def test_a_resolved_case_stays_closed(client):
     assert body["status"] == "resolved"
     assert body["mitigated_by_name"] == "On-call engineer"
     assert body["resolved_by_name"] == "On-call engineer"
+    detail = client.get(f"/api/incidents/{incident_id}", headers=headers)
+    changes = detail.json()["status_changes"]
+    assert [item["to_status"] for item in changes] == ["open", "mitigated", "resolved"]
+    assert [item["from_status"] for item in changes] == [None, "open", "mitigated"]
+    assert [item["actor"] for item in changes] == ["oncall", "oncall", "oncall"]
+    assert changes[0]["actor_name"] == "On-call engineer"
     for status in ("open", "investigating", "mitigated", "resolved"):
         refused = client.patch(
             f"/api/incidents/{incident_id}",

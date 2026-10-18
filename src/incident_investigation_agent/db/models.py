@@ -59,6 +59,34 @@ class Incident(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class StatusChange(Base):
+    """One status edit. The case row still stores only the latest actor."""
+
+    __tablename__ = "status_changes"
+    __table_args__ = (
+        CheckConstraint(
+            "from_status IS NULL OR from_status IN ('open', 'investigating', 'mitigated', 'resolved')",
+            name="ck_status_change_from",
+        ),
+        CheckConstraint(
+            "to_status IN ('open', 'investigating', 'mitigated', 'resolved')",
+            name="ck_status_change_to",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    incident_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        index=True,
+    )
+    from_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(20))
+    actor: Mapped[str] = mapped_column(String(200), default="")
+    actor_name: Mapped[str] = mapped_column(String(200), default="")
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class EvidenceItem(Base):
     __tablename__ = "evidence"
     __table_args__ = (

@@ -10,6 +10,7 @@ import {
   type EvidenceKind,
   type IncidentDetail,
   type Run,
+  type StatusChange,
 } from "./api";
 import { elapsed, formatWhen, timeTaken, SEVERITY_LABEL, STATUS_LABEL } from "./format";
 
@@ -207,6 +208,16 @@ export function IncidentSheet() {
           </div>
         ) : null}
       </dl>
+      {detail.status_changes.length > 0 ? (
+        <section className="status-history">
+          <h2>Status</h2>
+          <ol className="timeline">
+            {detail.status_changes.map((change) => (
+              <StatusChangeItem key={change.id} change={change} />
+            ))}
+          </ol>
+        </section>
+      ) : null}
       <p className="summary">{detail.summary}</p>
       <div className="actions">
         <button type="button" onClick={onInvestigate} disabled={busy || running || detail.status === "resolved"}>
@@ -289,6 +300,17 @@ export function IncidentSheet() {
         </button>
       </form>
     </main>
+  );
+}
+
+function StatusChangeItem({ change }: { change: StatusChange }) {
+  const person = who(change.actor_name, change.actor);
+  return (
+    <li>
+      <span className="kind">{STATUS_LABEL[change.to_status]}</span>
+      <time dateTime={change.changed_at}>{formatWhen(change.changed_at)}</time>
+      {person ? <p className="quiet">{person}</p> : null}
+    </li>
   );
 }
 
