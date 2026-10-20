@@ -227,6 +227,8 @@ The first `completed` or `failed` wins. A later finish does not replace `report`
 
 Finished runs stay on the case. A later Investigate inserts a new row. The partial unique index rejects a second `queued` or `running` row for the same `incident_id`. The API turns that integrity error into HTTP 409.
 
+The API also counts rows with `status` = `queued` before it inserts. At `MAX_QUEUED_RUNS` (32 unless the environment says otherwise) it returns 429 and writes nothing. On Postgres that count takes a transaction lock, so two requests cannot both pass the cap. A `running`, `completed`, or `failed` row does not count.
+
 ## 4. Use cases and the rows they write
 
 Each use case below is a data operation on this schema. Product narrative for the same cases is in `scope-and-use-cases.md`.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from incident_investigation_agent.db.models import EvidenceItem, Incident, InvestigationRun, StatusChange, utcnow
@@ -13,6 +13,9 @@ from incident_investigation_agent.domain.evidence import Evidence
 
 
 ACTIVE_RUN = ("queued", "running")
+# One transaction lock for every Investigate that might insert a queued row.
+# Held until that request commits, so two callers cannot both pass the cap.
+QUEUE_LOCK_KEY = 48291001
 
 
 class DbCaseStore:
@@ -99,6 +102,22 @@ def runs_for(session: Session, incident_id: uuid.UUID) -> list[InvestigationRun]
             .order_by(InvestigationRun.created_at.desc())
         ).all()
     )
+
+
+def queued_run_count(session: Session) -> int:
+    """How many runs are waiting. On Postgres, the count waits out any insert still in flight."""
+    bind = session.get_bind()
+    if bind.dialect.name == "postgresql":
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"),
+            {"key": QUEUE_LOCK_KEY},
+        )
+    value = session.scalar(
+        select(func.count())
+        .select_from(InvestigationRun)
+        .where(InvestigationRun.status == "queued")
+    )
+    return int(value or 0)
 
 
 def active_run(session: Session, incident_id: uuid.UUID) -> InvestigationRun | None:

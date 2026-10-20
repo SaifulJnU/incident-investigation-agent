@@ -6,7 +6,7 @@ import logging
 import uuid
 from datetime import timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -33,6 +33,7 @@ from incident_investigation_agent.repositories.cases import (
     move_status,
     open_incident,
     queue_run,
+    queued_run_count,
     runs_for,
     status_changes_for,
 )
@@ -140,6 +141,7 @@ def create_evidence(
 )
 def investigate(
     incident_id: uuid.UUID,
+    request: Request,
     session: Session = Depends(get_db),
     principal: Principal = Depends(get_principal),
 ):
@@ -151,7 +153,19 @@ def investigate(
             status_code=409,
             detail="An investigation is already running for this case.",
         )
-    settings = Settings.from_env()
+    settings: Settings = request.app.state.settings
+    waiting = queued_run_count(session)
+    if waiting >= settings.max_queued_runs:
+        log.info(
+            "investigation refused case=%s service=%s reason=queue_full queued=%s",
+            incident.id,
+            incident.service,
+            waiting,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="The investigation queue is full. Wait for a run to start, then try again.",
+        )
     model_name = (
         settings.ollama_model
         if settings.model_provider == "ollama"

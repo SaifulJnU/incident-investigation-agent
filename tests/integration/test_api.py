@@ -1,4 +1,6 @@
 import logging
+import uuid
+from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 from incident_investigation_agent.api.app import create_app
 from incident_investigation_agent.core.config import Settings, parse_dev_users
-from incident_investigation_agent.db.models import Base
+from incident_investigation_agent.db.models import Base, InvestigationRun
 from incident_investigation_agent.services.heartbeat import record_beat
 
 
@@ -129,6 +131,55 @@ def test_open_case_add_note_and_queue(client):
 
     again = client.post(f"/api/incidents/{incident_id}/investigate", headers=headers)
     assert again.status_code == 409
+
+
+def _open_case(client, headers, title: str) -> str:
+    created = client.post(
+        "/api/incidents",
+        headers=headers,
+        json={
+            "title": title,
+            "service": "checkout-api",
+            "severity": "sev2",
+            "summary": "POST /checkout returns 500.",
+        },
+    )
+    assert created.status_code == 201
+    return created.json()["id"]
+
+
+def test_a_full_queue_refuses_another_investigate():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    app = create_app(factory, settings=replace(_settings(), max_queued_runs=1))
+    with TestClient(app) as client:
+        headers = _auth(client, "oncall", "oncall-password")
+        first = _open_case(client, headers, "Checkout errors")
+        queued = client.post(f"/api/incidents/{first}/investigate", headers=headers)
+        assert queued.status_code == 202
+
+        second = _open_case(client, headers, "Checkout latency")
+        refused = client.post(f"/api/incidents/{second}/investigate", headers=headers)
+        assert refused.status_code == 429
+        assert refused.json()["detail"] == (
+            "The investigation queue is full. Wait for a run to start, then try again."
+        )
+        same_case = client.post(f"/api/incidents/{first}/investigate", headers=headers)
+        assert same_case.status_code == 409
+
+        with factory() as session:
+            run = session.get(InvestigationRun, uuid.UUID(queued.json()["id"]))
+            assert run is not None
+            run.status = "running"
+            session.commit()
+
+        started = client.post(f"/api/incidents/{second}/investigate", headers=headers)
+        assert started.status_code == 202
 
 
 def test_on_call_cannot_open_or_read_another_service(client):

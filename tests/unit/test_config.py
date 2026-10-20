@@ -90,6 +90,16 @@ def test_connector_timeout_defaults_and_rejects_a_wide_bound(monkeypatch):
         Settings.from_env()
 
 
+def test_queue_bound_defaults_and_rejects_an_unbounded_value(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "oidc")
+    monkeypatch.setenv("OIDC_ISSUER", "https://login.example.com")
+    monkeypatch.delenv("MAX_QUEUED_RUNS", raising=False)
+    assert Settings.from_env().max_queued_runs == 32
+    monkeypatch.setenv("MAX_QUEUED_RUNS", "0")
+    with pytest.raises(ValueError, match="MAX_QUEUED_RUNS"):
+        Settings.from_env()
+
+
 def test_prod_refuses_the_demo_login(monkeypatch):
     monkeypatch.setenv("APP_ENV", "prod")
     monkeypatch.setenv("AUTH_MODE", "dev")

@@ -10,7 +10,7 @@ The alert system still pages. This service writes the investigation. The numbers
 
 1. An engineer opens a case for one service and clicks Investigate.
 2. The API checks the token and the service grant. No token is 401. A service outside the grant is 403. Another service's case is 404.
-3. A case that is resolved, or already has a run in progress, is refused with 409.
+3. A case that is resolved, or already has a run in progress, is refused with 409. A queue that already holds 32 waiting runs, unless `MAX_QUEUED_RUNS` says otherwise, is refused with 429.
 4. A clear case is queued. The API returns 202. It does not call the model.
 5. A worker, outside that request, claims up to four queued runs with `FOR UPDATE SKIP LOCKED`.
 6. It builds a brief from the case and searches the systems this company has enabled. The searches run together, and they are read-only.
@@ -45,7 +45,8 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 | Search bound | A connector call that does not finish is failed for that source. The other sources are kept. The run does not stay in progress until the 20-minute timeout |
 | Stored errors | A failed run keeps the error with tokens and configured secrets replaced. A connector failure that is not an HTTP response is stored the same way |
 | Status history | Open, investigating, mitigated, and resolved are kept in order. A finished run records the return to open. A later edit does not erase the earlier one |
-| Tests | 79 automated tests for access, connectors, the API, and the worker |
+| Queue | At most 32 runs may wait. A further Investigate returns 429 until one of them starts. A running or finished run does not count |
+| Tests | 81 automated tests for access, connectors, the API, and the worker |
 | Stack | Python, FastAPI, Postgres, Alembic, React |
 
 ## Run it

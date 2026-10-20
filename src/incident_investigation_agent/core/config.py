@@ -135,6 +135,7 @@ class Settings:
     github_lookback_hours: int = 24
     connector_timeout_seconds: int = 15
     run_timeout_minutes: int = 20
+    max_queued_runs: int = 32
 
     @property
     def token_audience(self) -> str:
@@ -220,4 +221,5 @@ class Settings:
             github_lookback_hours=_int_env("GITHUB_LOOKBACK_HOURS", 24, 1, 168),
             connector_timeout_seconds=_int_env("CONNECTOR_TIMEOUT_SECONDS", 15, 1, 60),
             run_timeout_minutes=_int_env("RUN_TIMEOUT_MINUTES", 20, 1, 240),
+            max_queued_runs=_int_env("MAX_QUEUED_RUNS", 32, 1, 500),
         )

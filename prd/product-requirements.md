@@ -77,10 +77,11 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 - A case has a status: open, investigating, mitigated, resolved.
 - Only a person moves a case to mitigated or resolved.
 - Investigate is refused when a run is already queued or running, and when the case is resolved.
+- Investigate is refused with 429 when the number of queued runs is already `MAX_QUEUED_RUNS` (32 unless the environment says otherwise). A running or finished run does not count.
 
 ### 6.2 Investigation
 
-- Investigate stores a run and returns without waiting for the model.
+- Investigate stores a run and returns without waiting for the model. The waiting list holds at most `MAX_QUEUED_RUNS` runs.
 - The worker sends the model the title, service, severity, start time, description, and evidence already on the case.
 - The model may call enabled tools. Tool results go back to the model.
 - The worker stores the model's final text as the incident note.
