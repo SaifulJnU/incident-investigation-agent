@@ -168,7 +168,7 @@ FOR UPDATE SKIP LOCKED;
 
 ### 2.4 `worker_beats`
 
-One row for the worker process. It is not part of a case. The worker updates `beat_at` every few seconds, and `GET /api/health` treats a missing or stale row as a dead worker.
+One row for the worker process. It is not part of a case. The worker updates `beat_at` every few seconds, and `GET /api/health` treats a missing or stale row as a dead worker. That check is not liveness. `GET /api/live` does not read this table. `GET /api/ready` reads `incidents` and does not read this table.
 
 | Column | Type | Null | Meaning |
 | --- | --- | --- | --- |

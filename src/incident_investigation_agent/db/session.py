@@ -18,3 +18,13 @@ def database_ready(factory: sessionmaker[Session]) -> bool:
         return True
     except Exception:
         return False
+
+
+def schema_ready(factory: sessionmaker[Session]) -> bool:
+    """True when the case table can be read. A missing database and a missing migration are both false."""
+    try:
+        with factory() as session:
+            session.execute(text("SELECT id FROM incidents LIMIT 1"))
+        return True
+    except Exception:
+        return False

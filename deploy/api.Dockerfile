@@ -18,4 +18,7 @@ USER app
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn incident_investigation_agent.api.app:app --host 0.0.0.0 --port 8000"]
+# The server listens before migrations finish, so a database that is still
+# starting does not look like a dead process. /api/live stays 200. /api/ready
+# stays 503 until the case schema can be read.
+CMD ["sh", "-c", "while ! alembic upgrade head; do sleep 2; done & uvicorn incident_investigation_agent.api.app:app --host 0.0.0.0 --port 8000"]

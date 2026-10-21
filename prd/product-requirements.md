@@ -121,6 +121,7 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 - Local Docker must not inherit a host `MODEL_PROVIDER=bedrock` or `APP_ENV=prod` by accident. The compose file sets Ollama and `APP_ENV=local`.
 - The compose database password is for the local stack only. Production replaces `DATABASE_URL`.
 - An investigation that cannot authenticate to a plugin fails that run with the underlying error. It does not invent a cause.
+- `/api/live` returns 200 when the API process is up. It does not check the database. `/api/ready` returns 503 until the case schema can be read. A process waiting on the database is not the same as a process that is down. `/api/health` still reports the database and the worker.
 - The console works in a current desktop browser and on a narrow laptop width.
 
 ## 8. Success for the next test pass

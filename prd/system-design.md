@@ -185,6 +185,8 @@ web behind the company's HTTPS endpoint
 
 The console, API, worker, and schema stay the same. The company changes environment variables and which connector packages are enabled.
 
+`/api/live` returns 200 when the API process is serving. It does not open the database. `/api/ready` returns 503 until `incidents` can be read, including while migrations are still retrying. `/api/health` is the operator view: the database, and whether the worker heartbeat is fresh. The container health check uses liveness, so a database that is still starting does not look like a dead process.
+
 ## What is intentionally not in the design yet
 
 - A bus between API replicas. One worker polling Postgres is enough for a single company deployment.

@@ -63,6 +63,38 @@ def test_health_stays_open(client):
     assert response.headers["x-request-id"]
 
 
+def test_liveness_stays_up_when_the_worker_is_down(client):
+    live = client.get("/api/live")
+    assert live.status_code == 200
+    assert live.json() == {"status": "ok"}
+    ready = client.get("/api/ready")
+    assert ready.status_code == 200
+    assert ready.json() == {"status": "ok", "database": "ok"}
+    health = client.get("/api/health")
+    assert health.status_code == 503
+    assert health.json()["worker"] == "down"
+
+
+def test_a_process_waiting_on_the_database_is_still_alive():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    app = create_app(factory, settings=_settings())
+    with TestClient(app) as waiting:
+        live = waiting.get("/api/live")
+        assert live.status_code == 200
+        assert live.json() == {"status": "ok"}
+        ready = waiting.get("/api/ready")
+        assert ready.status_code == 503
+        assert ready.json() == {"status": "unavailable", "database": "down"}
+        health = waiting.get("/api/health")
+        assert health.status_code == 503
+        assert health.json() == {"status": "degraded", "database": "down", "worker": "unknown"}
+
+
 def test_health_is_ok_when_the_worker_has_beaten(client):
     factory = client.app.state.session_factory
     with factory() as session:

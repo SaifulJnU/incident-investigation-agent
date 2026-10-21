@@ -61,13 +61,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Liveness only. A database that is still starting, or a stopped worker,
+    # must not make this process look down. Readiness is /api/ready.
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/live')",
         ]
       interval: 5s
       timeout: 5s
