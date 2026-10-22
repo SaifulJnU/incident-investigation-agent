@@ -795,8 +795,8 @@ button:disabled {
 }
 
 .brief {
-  margin-top: 1.5rem;
-  padding-top: 1.2rem;
+  margin-top: 1.15rem;
+  padding-top: 1rem;
   border-top: 1px solid var(--line);
   max-width: 70ch;
 }

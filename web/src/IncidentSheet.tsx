@@ -155,6 +155,8 @@ export function IncidentSheet() {
   const opener = who(detail.opened_by_name, detail.opened_by);
   const mitigator = who(detail.mitigated_by_name, detail.mitigated_by);
   const resolver = who(detail.resolved_by_name, detail.resolved_by);
+  const latest = detail.runs[0];
+  const noteTime = latest ? timeTaken(latest.started_at, latest.finished_at) : "";
 
   return (
     <main className="sheet">
@@ -207,18 +209,32 @@ export function IncidentSheet() {
             </dd>
           </div>
         ) : null}
+        {noteTime ? (
+          <div>
+            <dt>Time to a note</dt>
+            <dd>{noteTime}</dd>
+          </div>
+        ) : null}
       </dl>
-      {detail.status_changes.length > 0 ? (
-        <section className="status-history">
-          <h2>Status</h2>
-          <ol className="timeline">
-            {detail.status_changes.map((change) => (
-              <StatusChangeItem key={change.id} change={change} />
-            ))}
-          </ol>
-        </section>
-      ) : null}
       <p className="summary">{detail.summary}</p>
+      <section className="brief">
+        <h2>Incident note</h2>
+        {detail.runs.length === 0 ? (
+          <p className="quiet">No investigation yet. Investigate to write the note.</p>
+        ) : (
+          <>
+            <RunRecord run={detail.runs[0]} now={now} showTaken={!noteTime} />
+            {detail.runs.length > 1 ? (
+              <div className="earlier">
+                <h3>Earlier notes</h3>
+                {detail.runs.slice(1).map((run) => (
+                  <RunRecord key={run.id} run={run} now={now} />
+                ))}
+              </div>
+            ) : null}
+          </>
+        )}
+      </section>
       <div className="actions">
         <button type="button" onClick={onInvestigate} disabled={busy || running || detail.status === "resolved"}>
           {running ? "Investigation running" : "Investigate"}
@@ -245,6 +261,16 @@ export function IncidentSheet() {
           {error}
         </p>
       ) : null}
+      {detail.status_changes.length > 0 ? (
+        <section className="status-history">
+          <h2>Status</h2>
+          <ol className="timeline">
+            {detail.status_changes.map((change) => (
+              <StatusChangeItem key={change.id} change={change} />
+            ))}
+          </ol>
+        </section>
+      ) : null}
       <div className="sheet-grid">
         <section>
           <h2>Timeline</h2>
@@ -261,24 +287,6 @@ export function IncidentSheet() {
           </section>
         </div>
       </div>
-      <section className="brief">
-        <h2>Incident note</h2>
-        {detail.runs.length === 0 ? (
-          <p className="quiet">No investigation yet.</p>
-        ) : (
-          <>
-            <RunRecord run={detail.runs[0]} now={now} />
-            {detail.runs.length > 1 ? (
-              <div className="earlier">
-                <h3>Earlier notes</h3>
-                {detail.runs.slice(1).map((run) => (
-                  <RunRecord key={run.id} run={run} now={now} />
-                ))}
-              </div>
-            ) : null}
-          </>
-        )}
-      </section>
       <form onSubmit={onNote} className="intake note-form">
         <h2>Add a note</h2>
         <label>
@@ -314,7 +322,7 @@ function StatusChangeItem({ change }: { change: StatusChange }) {
   );
 }
 
-function RunRecord({ run, now }: { run: Run; now: number }) {
+function RunRecord({ run, now, showTaken = true }: { run: Run; now: number; showTaken?: boolean }) {
   const taken = timeTaken(run.started_at, run.finished_at);
   const requester = who(run.requested_by_name, run.requested_by);
   const live = run.status === "queued" || run.status === "running";
@@ -336,7 +344,7 @@ function RunRecord({ run, now }: { run: Run; now: number }) {
         </p>
       ) : null}
       {run.report ? <div className="report">{run.report}</div> : null}
-      {taken ? <p className="taken">Time taken: {taken}</p> : null}
+      {showTaken && taken ? <p className="taken">Time taken: {taken}</p> : null}
     </article>
   );
 }
