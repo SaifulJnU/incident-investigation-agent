@@ -6,11 +6,9 @@ import {
   investigate,
   updateIncident,
   type CaseStatus,
-  type Evidence,
   type EvidenceKind,
   type IncidentDetail,
   type Run,
-  type StatusChange,
 } from "./api";
 import { elapsed, formatWhen, timeTaken, SEVERITY_LABEL, STATUS_LABEL } from "./format";
 
@@ -102,9 +100,7 @@ export function IncidentSheet() {
   }
 
   const running = detail.runs.some((run) => run.status === "queued" || run.status === "running");
-  const timeline = detail.evidence.filter((item) => item.kind === "symptom" || item.kind === "timeline" || item.kind === "change");
-  const hypotheses = detail.evidence.filter((item) => item.kind === "hypothesis");
-  const logs = detail.evidence.filter((item) => item.kind === "log");
+  const clock = caseClock(detail);
 
   async function refresh() {
     setDetail(await getIncident(id));
@@ -224,14 +220,6 @@ export function IncidentSheet() {
         ) : (
           <>
             <RunRecord run={detail.runs[0]} now={now} showTaken={!noteTime} />
-            {detail.runs.length > 1 ? (
-              <div className="earlier">
-                <h3>Earlier notes</h3>
-                {detail.runs.slice(1).map((run) => (
-                  <RunRecord key={run.id} run={run} now={now} />
-                ))}
-              </div>
-            ) : null}
           </>
         )}
       </section>
@@ -261,32 +249,29 @@ export function IncidentSheet() {
           {error}
         </p>
       ) : null}
-      {detail.status_changes.length > 0 ? (
-        <section className="status-history">
-          <h2>Status</h2>
+      <section className="record">
+        <h2>Record</h2>
+        {clock.length === 0 ? (
+          <p className="quiet">Nothing recorded yet.</p>
+        ) : (
           <ol className="timeline">
-            {detail.status_changes.map((change) => (
-              <StatusChangeItem key={change.id} change={change} />
+            {clock.map((entry) => (
+              <li key={entry.id}>
+                <span className="kind">{entry.label}</span>
+                <time dateTime={entry.at}>{formatWhen(entry.at)}</time>
+                {entry.body ? <p className={entry.mono ? "log-body" : undefined}>{entry.body}</p> : null}
+                {entry.error ? (
+                  <p className="problem" role="alert">
+                    {entry.error}
+                  </p>
+                ) : null}
+                {entry.report ? <div className="report">{entry.report}</div> : null}
+                {entry.meta ? <p className="quiet">{entry.meta}</p> : null}
+              </li>
             ))}
           </ol>
-        </section>
-      ) : null}
-      <div className="sheet-grid">
-        <section>
-          <h2>Timeline</h2>
-          <EvidenceList items={timeline} empty="Nothing on the timeline yet. Investigate, or add a note." showKind />
-        </section>
-        <div className="side">
-          <section>
-            <h2>Hypotheses</h2>
-            <EvidenceList items={hypotheses} empty="No hypothesis recorded yet." />
-          </section>
-          <section>
-            <h2>Log lines</h2>
-            <EvidenceList items={logs} empty="No log lines recorded yet." mono />
-          </section>
-        </div>
-      </div>
+        )}
+      </section>
       <form onSubmit={onNote} className="intake note-form">
         <h2>Add a note</h2>
         <label>
@@ -311,15 +296,84 @@ export function IncidentSheet() {
   );
 }
 
-function StatusChangeItem({ change }: { change: StatusChange }) {
-  const person = who(change.actor_name, change.actor);
-  return (
-    <li>
-      <span className="kind">{STATUS_LABEL[change.to_status]}</span>
-      <time dateTime={change.changed_at}>{formatWhen(change.changed_at)}</time>
-      {person ? <p className="quiet">{person}</p> : null}
-    </li>
-  );
+type ClockEntry = {
+  id: string;
+  at: string;
+  label: string;
+  body: string;
+  meta: string;
+  mono: boolean;
+  report: string;
+  error: string;
+  order: number;
+};
+
+function caseClock(detail: IncidentDetail): ClockEntry[] {
+  const latestId = detail.runs[0]?.id ?? "";
+  const entries: ClockEntry[] = [];
+  for (const change of detail.status_changes) {
+    entries.push({
+      id: `status-${change.id}`,
+      at: change.changed_at,
+      label: STATUS_LABEL[change.to_status],
+      body: "",
+      meta: who(change.actor_name, change.actor),
+      mono: false,
+      report: "",
+      error: "",
+      order: 0,
+    });
+  }
+  for (const item of detail.evidence) {
+    entries.push({
+      id: `evidence-${item.id}`,
+      at: item.recorded_at,
+      label: KIND_LABEL[item.kind],
+      body: item.summary,
+      meta: item.source,
+      mono: item.kind === "log",
+      report: "",
+      error: "",
+      order: 1,
+    });
+  }
+  for (const run of detail.runs) {
+    const taken = timeTaken(run.started_at, run.finished_at);
+    const person = who(run.requested_by_name, run.requested_by);
+    const model = run.provider ? `${run.provider} ${run.model_name}`.trim() : "";
+    const bits = [person, model, taken].filter(Boolean);
+    entries.push({
+      id: `run-${run.id}`,
+      at: run.finished_at || run.started_at || run.created_at,
+      label: runLabel(run),
+      body: "",
+      meta: bits.join(", "),
+      mono: false,
+      report: run.id === latestId ? "" : run.report || "",
+      error: run.error || "",
+      order: 2,
+    });
+  }
+  return entries.sort((left, right) => {
+    const delta = new Date(left.at).getTime() - new Date(right.at).getTime();
+    if (delta !== 0 && !Number.isNaN(delta)) {
+      return delta;
+    }
+    return left.order - right.order;
+  });
+}
+
+function runLabel(run: Run): string {
+  if (run.status === "completed") {
+    return "Incident note";
+  }
+  if (run.status === "failed") {
+    return "Investigation failed";
+  }
+  if (run.status === "running") {
+    return "Investigation running";
+  }
+  return "Investigation queued";
 }
 
 function RunRecord({ run, now, showTaken = true }: { run: Run; now: number; showTaken?: boolean }) {
@@ -349,30 +403,3 @@ function RunRecord({ run, now, showTaken = true }: { run: Run; now: number; show
   );
 }
 
-function EvidenceList({
-  items,
-  empty,
-  showKind = false,
-  mono = false,
-}: {
-  items: Evidence[];
-  empty: string;
-  showKind?: boolean;
-  mono?: boolean;
-}) {
-  if (items.length === 0) {
-    return <p className="quiet">{empty}</p>;
-  }
-  return (
-    <ol className="timeline">
-      {items.map((item) => (
-        <li key={item.id}>
-          {showKind ? <span className="kind">{KIND_LABEL[item.kind]}</span> : null}
-          <time dateTime={item.recorded_at}>{formatWhen(item.recorded_at)}</time>
-          <p className={mono ? "log-body" : undefined}>{item.summary}</p>
-          <p className="quiet">{item.source}</p>
-        </li>
-      ))}
-    </ol>
-  );
-}
