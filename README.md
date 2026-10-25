@@ -66,7 +66,7 @@ Open http://localhost:8080.
 | `oncall` | `oncall-local` | checkout and payments |
 | `platform` | `platform-local` | every service |
 
-Choose "Use the checkout sample", open the case, and choose Investigate.
+Choose "Use the checkout sample", open the case, and choose Investigate. When the run finishes, the page shows the incident note and the time it took.
 
 ```bash
 pytest
