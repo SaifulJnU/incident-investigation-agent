@@ -68,6 +68,8 @@ Open http://localhost:8080.
 
 Choose "Use the checkout sample", open the case, and choose Investigate. When the run finishes, the page shows the incident note and the time it took.
 
+<img src="docs/console.png" alt="Finished checkout case. The incident note and the time it took sit under the brief." width="1000">
+
 ```bash
 pytest
 ```
