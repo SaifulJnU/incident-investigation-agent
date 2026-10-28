@@ -63,7 +63,7 @@ Open http://localhost:8080.
 
 | Username | Password | Services |
 | --- | --- | --- |
-| `oncall` | `oncall-local` | checkout and payments |
+| `oncall` | `oncall-local` | `checkout-api`, `payments-api` |
 | `platform` | `platform-local` | every service |
 
 Choose "Use the checkout sample", open the case, and choose Investigate. When the run finishes, the page shows the incident note and the time it took.
