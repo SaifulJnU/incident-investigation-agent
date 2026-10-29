@@ -65,5 +65,10 @@ export function elapsed(iso: string, now = Date.now()): string {
   if (hours < 48) {
     return `${hours}h ${minutes % 60}m`;
   }
-  return `${Math.floor(hours / 24)}d`;
+  const days = Math.floor(hours / 24);
+  const leftoverHours = hours % 24;
+  if (leftoverHours === 0) {
+    return `${days}d`;
+  }
+  return `${days}d ${leftoverHours}h`;
 }
