@@ -151,8 +151,8 @@ export function IncidentSheet() {
   const opener = who(detail.opened_by_name, detail.opened_by);
   const mitigator = who(detail.mitigated_by_name, detail.mitigated_by);
   const resolver = who(detail.resolved_by_name, detail.resolved_by);
-  const latest = detail.runs[0];
-  const noteTime = latest ? timeTaken(latest.started_at, latest.finished_at) : "";
+  const firstNote = [...detail.runs].reverse().find((run) => run.status === "completed");
+  const noteTime = firstNote ? timeTaken(firstNote.started_at, firstNote.finished_at) : "";
 
   return (
     <main className="sheet">
