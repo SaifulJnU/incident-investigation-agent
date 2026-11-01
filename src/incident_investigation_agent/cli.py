@@ -9,7 +9,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from incident_investigation_agent.core.config import Settings
-from incident_investigation_agent.services.agent import build_agent
+from incident_investigation_agent.infrastructure.file_case import CaseStore
+from incident_investigation_agent.services.investigation import investigate_text
 
 
 def _read_brief(path: Path) -> str:
@@ -21,7 +22,7 @@ def _read_brief(path: Path) -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="investigate",
-        description="Investigate an incident with a Strands agent.",
+        description="Search the enabled systems, then write one incident note.",
     )
     parser.add_argument(
         "symptom",
@@ -58,5 +59,5 @@ def main(argv: list[str] | None = None) -> None:
         ),
         file=sys.stderr,
     )
-    agent = build_agent(settings)
-    agent(prompt)
+    note = investigate_text(settings, CaseStore(settings.case_dir), prompt, None)
+    print(note)

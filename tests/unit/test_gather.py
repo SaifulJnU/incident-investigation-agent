@@ -181,7 +181,7 @@ def test_a_hung_connector_fails_that_source_and_keeps_the_others(tmp_path, monke
 
 
 def test_note_prompt_leads_with_each_match_once():
-    prompt = "Incident: Checkout\nStart by calling search_logs. Do not write the incident note."
+    prompt = "Incident: Checkout\nSearches run before this note is written."
     batch = SearchBatch(
         "search_logs timeout:\napi.log:3: vault timeout",
         (
@@ -192,7 +192,7 @@ def test_note_prompt_leads_with_each_match_once():
         unchecked=("CloudWatch is not configured. Set CLOUDWATCH_LOG_GROUP_PREFIX.",),
     )
     note = _note_prompt(prompt, batch)
-    assert "Start by calling search_logs" not in note
+    assert "Searches run before this note is written." not in note
     assert note.count("vault timeout") == 1
     assert "api.log:4: vault connection timed out" in note
     assert note.index("vault timeout") < note.index("CloudWatch is not configured")

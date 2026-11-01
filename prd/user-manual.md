@@ -56,7 +56,7 @@ The image includes `examples/logs/checkout-api/api.log`. That file is the only s
 | --- | --- |
 | Unable to locate credentials | The worker is on Bedrock. Local compose should log `provider=ollama`. Recreate the api and worker after confirming `MODEL_PROVIDER` is `ollama` in `docker-compose.yml`. |
 | Connection errors to port 11434 | Start Ollama on the host. From the host, `http://localhost:11434` should answer. |
-| The note describes `record_evidence` but the timeline is empty | The model searched, then wrote about the tool instead of calling it. The search still happened. A stronger local model, or a later prompt fix, is what makes the timeline fill. |
+| The timeline has no log lines | The worker found no matching line to keep. The note should say that. A failed run stores the error instead of a note. |
 | Investigation running and it never finishes | A deploy releases the run that worker still holds, and the case goes back to open. A crash has no stop signal, so that row stays `running` until the timeout (20 minutes unless `RUN_TIMEOUT_MINUTES` says otherwise). Investigate is refused while the row is still running. |
 | The investigation queue is full | Wait until a queued run starts. The waiting list holds 32 runs unless `MAX_QUEUED_RUNS` says otherwise. A case that already has a run in progress shows a different message. |
 | `/api/live` does not answer | The API process is down. A database that is still starting does not fail this check, and neither does a stopped worker. |
@@ -76,7 +76,7 @@ A healthy local worker contains `worker ready provider=ollama`. That line has no
 
 ## Command line, without the console
 
-This path does not write to Postgres. It writes `.case/case.json`.
+This path does not write to Postgres. It runs the same search and the same note as the worker, and it writes the kept lines to `.case/case.json`.
 
 ```powershell
 python -m venv .venv
@@ -143,7 +143,7 @@ To keep a local model in production, leave `MODEL_PROVIDER=ollama` and point `OL
 | Use the checkout sample | No | Fills the form in the browser |
 | Open case | No | Creates the case and stores the engineer's name |
 | Add a note | No | Stores a fact on the case |
-| Investigate | Yes, on the worker | Queues a run. The worker calls the model and tools |
+| Investigate | Yes, on the worker | Queues a run. The worker searches, stores the lines, and one model call writes the note |
 | Mark mitigated | No | Records who stopped the immediate harm |
 | Mark resolved | No | Records who closed the case and blocks another investigation |
 

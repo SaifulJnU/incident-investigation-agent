@@ -1,4 +1,8 @@
-"""Case-file tools, plus the connectors selected by APP_ENV."""
+"""Strands wrappers for evidence and connectors.
+
+Investigate does not call these. The worker and the command line search in
+gather and store each matching line themselves.
+"""
 
 from __future__ import annotations
 

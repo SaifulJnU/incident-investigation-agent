@@ -17,7 +17,13 @@ from incident_investigation_agent.infrastructure.redact import configured_secret
 from incident_investigation_agent.repositories.cases import DbCaseStore, move_status
 from incident_investigation_agent.services.agent import build_note_agent
 from incident_investigation_agent.services.gather import SearchBatch, gather
-from incident_investigation_agent.services.report import IncidentBrief, investigation_prompt, message_text
+from incident_investigation_agent.domain.evidence import EvidenceStore
+from incident_investigation_agent.services.report import (
+    BRIEF_TAIL,
+    IncidentBrief,
+    investigation_prompt,
+    message_text,
+)
 
 log = logging.getLogger("incident_investigation_agent.worker")
 
@@ -186,7 +192,7 @@ def execute(factory: sessionmaker[Session], settings: Settings, run_id, investig
 
     store = DbCaseStore(factory, incident_id)
     prompt = investigation_prompt(brief, store.list())
-    runner = investigate or _investigate_with_agent
+    runner = investigate or investigate_text
     started = time.perf_counter()
     with bind_investigation(incident_id, run_id):
         log.info(
@@ -209,7 +215,7 @@ def execute(factory: sessionmaker[Session], settings: Settings, run_id, investig
 
 
 def run_once(factory: sessionmaker[Session], settings: Settings, investigate=None) -> bool:
-    runner = investigate or _investigate_with_agent
+    runner = investigate or investigate_text
     with factory() as session:
         run = claim_next(session)
         if run is None:
@@ -221,7 +227,17 @@ def run_once(factory: sessionmaker[Session], settings: Settings, investigate=Non
     return True
 
 
-def _investigate_with_agent(settings: Settings, store: DbCaseStore, prompt: str, service: str) -> str:
+def investigate_text(
+    settings: Settings,
+    store: EvidenceStore,
+    prompt: str,
+    service: str | None,
+) -> str:
+    """Search the enabled connectors, keep the lines, and write one note.
+
+    The console worker and the command line both use this. The model does not
+    choose the searches and does not call tools.
+    """
     batch = gather(settings, service, prompt)
     _record_findings(store, batch.findings)
     note = _note_prompt(prompt, batch)
@@ -241,8 +257,7 @@ def _record_findings(store, findings) -> None:
 
 def _note_prompt(prompt: str, batch: SearchBatch) -> str:
     """One copy of each matching line, then what was not checked."""
-    marker = "Start by calling search_logs."
-    base = prompt.split(marker)[0].rstrip() if marker in prompt else prompt.rstrip()
+    base = prompt.split(BRIEF_TAIL)[0].rstrip() if BRIEF_TAIL in prompt else prompt.rstrip()
     parts = [base, "", "Matching lines:"]
     if batch.findings:
         parts.extend(item.summary for item in batch.findings)

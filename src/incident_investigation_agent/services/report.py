@@ -15,6 +15,10 @@ class IncidentBrief:
     started_at: datetime
 
 
+# The worker strips this line before the note call. Gather still sees the brief above it.
+BRIEF_TAIL = "Searches run before this note is written."
+
+
 def investigation_prompt(brief: IncidentBrief, evidence: list) -> str:
     lines = [
         f"Incident: {brief.title}",
@@ -27,9 +31,7 @@ def investigation_prompt(brief: IncidentBrief, evidence: list) -> str:
         lines.append("Evidence already recorded:")
         for item in evidence:
             lines.append(f"- [{item.kind}] {item.summary} (source: {item.source})")
-    lines.append(
-        "Start by calling search_logs. Do not write the incident note until a tool result has come back."
-    )
+    lines.append(BRIEF_TAIL)
     return "\n".join(lines)
 
 

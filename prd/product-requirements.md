@@ -37,11 +37,11 @@ This is the slice that runs.
 - Web console at port 8080: sign in, open a case, list cases, add a note, investigate, mark mitigated, mark resolved.
 - Sign-in. Production checks an OIDC access token. Local compose uses two development accounts.
 - A person may open and read cases only for services on their token. `incident-admin` may open every service.
-- API and a worker. Investigate returns immediately and the worker runs the agent.
+- API and a worker. Investigate returns immediately. The worker searches, then one model call writes the note.
 - Postgres stores cases, evidence, and investigation runs, including who opened the case and who requested the run.
-- Strands agent with `record_evidence`, `list_evidence`, and the connectors selected by `APP_ENV`.
-- `APP_ENV=local` enables `search_logs`, which reads only `LOG_DIR/<service>`. In Docker the checkout sample is `examples/logs/checkout-api`.
-- `APP_ENV=prod` enables CloudWatch, Datadog, Loki, and GitHub. `CONNECTORS` can name a shorter list.
+- The worker searches the connectors selected by `APP_ENV` and `CONNECTORS`. It stores each matching line itself. The model does not call tools.
+- `APP_ENV=local` searches `LOG_DIR/<service>`. In Docker the checkout sample is `examples/logs/checkout-api`.
+- `APP_ENV=prod` searches CloudWatch, Datadog, Loki, and GitHub. `CONNECTORS` can name a shorter list.
 - Model plug with two options: Ollama (local compose) and Amazon Bedrock (when `MODEL_PROVIDER=bedrock` and AWS credentials exist).
 - CLI that investigates a prompt and writes `.case/case.json`, separate from the console database.
 
@@ -52,9 +52,9 @@ Built for logs and GitHub commits. Slack and PagerDuty intake are still later. T
 A tool plugin:
 
 - Has a name a company can enable or disable (`local_logs`, `cloudwatch`, `datadog`, `github`, `grafana`).
-- Exposes one or more Strands tools.
+- Exposes a search function the worker calls. A Strands tool wrapper may sit on that same function. Investigate does not ask the model to call it.
 - Is read-only in the first version of that plugin.
-- Returns text the model can quote. It does not write back to the external system.
+- Returns text the note can quote. It does not write back to the external system.
 - Declares the settings it needs (region, API key, log group) and fails with a clear message when those settings are missing.
 - Can be omitted. A company with only GitHub and local files does not configure Datadog.
 
@@ -83,14 +83,15 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 
 - Investigate stores a run and returns without waiting for the model. The waiting list holds at most `MAX_QUEUED_RUNS` runs.
 - The worker sends the model the title, service, severity, start time, description, and evidence already on the case.
-- The model may call enabled tools. Tool results go back to the model.
+- Before that call, the worker searches every enabled connector for `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three other words from the brief. GitHub is asked for recent commits once, not once per word.
+- The worker stores each matching line as evidence. The model does not choose the searches and does not call tools.
 - The worker stores the model's final text as the incident note.
 - The console shows the latest run: provider, model name, status, note, and error if the run failed.
 
 ### 6.3 Evidence
 
 - A person can add a note of kind symptom, log, timeline, change, or hypothesis.
-- The agent can add the same kinds through `record_evidence`.
+- The worker adds the same kinds for each matching line it keeps. A log line is `log`. A GitHub commit is `change`.
 - The console groups them: timeline (symptom, timeline, change), hypotheses, log lines.
 
 ### 6.4 Tools that must be pluggable
@@ -110,7 +111,7 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 
 | Provider | When a company uses it | Status |
 | --- | --- | --- |
-| Ollama | Local install. Any pulled model. `llama3.1` is the default because it can call tools | Built |
+| Ollama | Local install. Any pulled model. `llama3.1` is the default local model | Built |
 | Amazon Bedrock | Production, with the company's AWS credentials and an enabled model | Built, not used by local compose |
 | Other Strands providers | A company that standardizes on another API | Planned as another `MODEL_PROVIDER` value |
 
@@ -131,11 +132,9 @@ A tester can:
 1. Open the console and create the sample checkout case without a cloud account.
 2. Click Investigate and see a completed run that used Ollama, not Bedrock.
 3. See a note that quotes a line present in `examples/logs/checkout-api/api.log` and absent from the title.
-4. See that line also stored as evidence when the model calls `record_evidence`.
+4. See that same line stored as evidence by the worker, without the model calling a tool.
 5. Mark the case mitigated, then resolved, and see Investigate disabled.
 6. Point the same stack at Bedrock by changing the provider and supplying AWS credentials, without changing the console.
-
-Item 4 is not reliable on `llama3.1` today. The model sometimes describes the tool call instead of making it. That is a test failure to fix, not the intended product behavior.
 
 ## 9. Out of scope for the current build
 

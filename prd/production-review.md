@@ -9,7 +9,7 @@ This is a working record for the next changes. It is not a launch checklist.
 
 Case file is a solid single-company pilot. One on-call team can run it, sign in, keep a case, and get a note from logs the company already has.
 
-It is not yet a service a company should page on. The record, the queue, and the access checks are ahead of the investigation itself. The investigation is a fixed word search plus one model call. The design notes still describe a different product, one where the model chooses the tools.
+It is not yet a service a company should page on. The record, the queue, and the access checks are ahead of the investigation itself. The investigation is a fixed word search plus one model call. The design notes now describe that same path.
 
 | Area | Grade | Why |
 | --- | --- | --- |
@@ -34,13 +34,11 @@ These are worth keeping. Later work should sit on them.
 
 ## Mistakes and drift
 
-### The console and the CLI investigate differently
+### The console and the CLI now investigate the same way
 
-`investigate` on the command line builds a Strands agent with tools and `SYSTEM_PROMPT`. The worker does not. `_investigate_with_agent` calls `gather`, stores every matching line, then asks `build_note_agent` for one reply with no tools.
+Both call `investigate_text`. That function runs `gather`, stores every matching line, then asks `build_note_agent` for one reply with no tools. The requirements, the system design, and the command line describe that path. The tool-calling prompt is gone.
 
-`SYSTEM_PROMPT` tells the model to call `search_logs`, `record_evidence`, and the company tools. That prompt is not on the path a person clicks in the console. The product requirements and the system design still say the model calls the tools. The requirements also say a model that describes a tool call instead of making one is a test failure. The worker path avoids that failure by not offering tools.
-
-That split is the main engineering mistake. Two products now live in one repository, and the written design matches the one the console does not run.
+The investigation is still a fixed word list plus one model call. Closing the split did not make the search able to ask a second question. That remains the weak part, and it is item 7 below.
 
 ### A timeout and a deploy write the same error
 
@@ -95,7 +93,7 @@ The idea of an MCP connector, or any existing tool server, is the right directio
 
 MCP is a way to call tools that already exist: GitHub, Datadog, AWS, an internal runbook. Case file already has that idea, in a private form. `infrastructure/connectors/registry.py` maps a name to `tools_for`. `CONNECTORS` turns names on. A company adds a system by writing a Python function and a line in that map, then a second line in `gather._jobs`, because the worker does not call the Strands tools.
 
-An MCP server plugged into `build_agent` would change the CLI and leave the console as it is. That would widen the split instead of closing it.
+An MCP server attached only to the note model would not run during a search. Gather calls Python functions. An MCP connector has to be one of those functions.
 
 Use MCP later, as one more connector, with these limits:
 
@@ -111,7 +109,7 @@ Until the console path can call a tool by name, a new system is still a short Py
 
 Each one is small enough to review, and each one is visible to a person using the product or operating it.
 
-1. Make the design match the worker. Either say in the requirements and the system design that Investigate gathers with a fixed query list and then writes one note, or put one tool round back on the worker path. Do not leave both stories in the repository.
+1. Done. The console, the command line, and the design notes all say Investigate gathers with the fixed query list and then writes one note.
 2. Store the real reason when a run is abandoned. A timeout and a stopped worker should read differently on the case.
 3. Give each worker process its own heartbeat name, and delete only that row on stop. Then a second worker is a real scale step.
 4. Cap the case list with a page size, and cap how much text one finding can store.

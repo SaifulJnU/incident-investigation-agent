@@ -13,7 +13,7 @@ The alert system still pages. This service writes the investigation. The numbers
 3. A case that is resolved, or already has a run in progress, is refused with 409. A queue that already holds 32 waiting runs, unless `MAX_QUEUED_RUNS` says otherwise, is refused with 429.
 4. A clear case is queued. The API returns 202. It does not call the model.
 5. A worker, outside that request, claims up to four queued runs with `FOR UPDATE SKIP LOCKED`.
-6. It builds a brief from the case and searches the systems this company has enabled. The searches run together, and they are read-only.
+6. It builds a brief from the case and searches the systems this company has enabled. The queries are `timeout`, `timed out`, and `500`, plus a version, a status code, and a few words from the brief. The searches run together, and they are read-only. The model does not choose them.
 7. One model call writes the note. Evidence stays apart from that prose: symptom, log, timeline, change, hypothesis.
 8. The console poll shows the note. A person marks the case mitigated or resolved.
 
@@ -48,7 +48,7 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 | Queue | At most 32 runs may wait. A further Investigate returns 429 until one of them starts. A running or finished run does not count |
 | Probes | `/api/live` is 200 when the process is up. `/api/ready` is 503 while it waits on the database. `/api/health` still reports the worker |
 | Case page | The incident note sits under the brief, with how long it took. Below that, one record lists status, evidence, and each note in time order |
-| Tests | 83 automated tests for access, connectors, the API, and the worker |
+| Tests | 84 automated tests for access, connectors, the API, the worker, and the command line |
 | Stack | Python, FastAPI, Postgres, Alembic, React |
 
 ## Run it

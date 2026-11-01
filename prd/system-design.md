@@ -45,7 +45,7 @@ flowchart TB
 | API | Checks the token and the service grant, then cases, notes, status, and queues an investigation. Does not call the model |
 | Worker | Claims a queued run, calls the agent, stores the note |
 | Postgres | Cases, evidence, runs, and each status change. Also the job queue, using a row status and `FOR UPDATE SKIP LOCKED` |
-| Strands agent | Loop: send the case, run a tool the model asked for, send the tool result back |
+| Strands agent | One model call after the searches finish. That call has no tools |
 | Model plugin | Ollama or Bedrock |
 | Tool plugins | Case file, plus `APP_ENV=local` log folder or `APP_ENV=prod` CloudWatch, Datadog, Loki, and GitHub |
 
@@ -68,9 +68,10 @@ sequenceDiagram
     Console->>API: GET /api/incidents/{id}
   end
   Worker->>DB: claim oldest queued run
-  Worker->>Model: case text plus tool list
-  Model->>Logs: enabled connector for this APP_ENV
-  Logs-->>Model: text result
+  Worker->>Logs: timeout, timed out, 500, and a few words from the brief
+  Logs-->>Worker: matching lines
+  Worker->>DB: store each matching line as evidence
+  Worker->>Model: brief, matching lines, misses, and sources that were not checked
   Model-->>Worker: incident note
   Worker->>DB: save note, status=completed
   Console->>API: GET /api/incidents/{id}
@@ -89,28 +90,28 @@ Started: <started at>
 What we know: <summary>
 Evidence already recorded:
 - ...
-Start by calling search_logs.
+Searches run before this note is written.
 ```
 
-`search_logs` then reads files under `LOG_DIR/<service>`. In the local stack a checkout case reads `/app/examples/logs/checkout-api/api.log`. A case for another service cannot read that directory.
+The worker removes that last line before the model call. The searches have already run. Local logs read `LOG_DIR/<service>`. In the local stack a checkout case reads `/app/examples/logs/checkout-api/api.log`. A case for another service cannot read that directory.
 
 ## Plugin shape
 
-The agent is constructed in one place: `build_agent`. It receives a model object and a list of tools. Everything else in the product stays fixed.
+One function runs an investigation: `investigate_text`. The console worker and the command line both call it. It gathers, stores the lines, then asks `build_note_agent` for one reply. That agent has no tools.
 
 ```text
-enabled model  -----> Strands Agent -----> incident note
-enabled tools  -----^
-case brief     -----^
+case brief -----> gather -----> matching lines -----> note model -----> incident note
+enabled connectors -----^
 ```
 
 Target layout, so a company can add a system without editing the console:
 
 ```text
 src/incident_investigation_agent/
-  services/agent.py              builds the Strands agent
+  services/investigation.py      gather, store lines, write the note
+  services/agent.py              the note model, with no tools
+  services/gather.py             the fixed query list and the fan-out
   infrastructure/llm.py          chooses ollama or bedrock
-  infrastructure/tools.py        case-file tools, always on
   infrastructure/logs.py         local log search
   infrastructure/connectors/
     local_logs.py                APP_ENV=local
@@ -121,11 +122,13 @@ src/incident_investigation_agent/
     registry.py                  reads APP_ENV and CONNECTORS
 ```
 
-A connector module exposes a function:
+A connector module exposes the search function `gather` calls. The same module can also expose:
 
 ```text
-tools_for(settings) -> list of Strands tools
+tools_for(settings, service) -> list of Strands tools
 ```
+
+Investigate does not call `tools_for`. The search function is the path that runs.
 
 `APP_ENV=local` enables `local_logs`. `APP_ENV=prod` enables `cloudwatch`, `datadog`, `loki`, and `github`. `CONNECTORS=cloudwatch,github` replaces that default. An unknown name fails at startup with the list of known names. A connector whose setting is missing returns that missing name from the tool, and the case stays usable.
 
@@ -133,7 +136,7 @@ A call that is still running after `CONNECTOR_TIMEOUT_SECONDS` (15 by default) i
 
 A failed run stores `error` with tokens removed. Bearer tokens, GitHub tokens, AWS access key ids, a password written in a URL, and the Datadog, Loki, GitHub, and database secrets from this process are replaced with `[redacted]` before the row is written. CloudWatch applies the same replacement when its client raises, so a failure that is not an HTTP response is not saved raw.
 
-The case-file tools `record_evidence` and `list_evidence` stay on for every company. They write to this product's database, not to the company's other systems.
+The worker writes evidence into this product's database. It does not write back to the company's other systems.
 
 ## Data the case stores
 
@@ -157,7 +160,7 @@ status_changes
 
 One case may have many runs. The console shows the latest. One case may have at most one queued or running run. The deployment also refuses a new run when queued runs already number `MAX_QUEUED_RUNS` (32 by default). A running or finished run does not count toward that bound. Each status edit is kept. The incident row still stores the latest opener, mitigator, and resolver.
 
-External systems are not copied into Postgres wholesale. A plugin returns the lines or commits the model asked for, and `record_evidence` stores the short fact the model decided to keep.
+External systems are not copied into Postgres wholesale. A connector returns the lines or commits the fixed queries asked for, and the worker stores each matching line.
 
 ## Deployment shapes
 

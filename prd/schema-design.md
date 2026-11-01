@@ -255,7 +255,7 @@ Someone adds "database failover was not announced" before or during the investig
 | `evidence` insert | `incident_id` of the open case, `kind` = `change` or `timeline`, `source` = the signed-in subject, `summary` = that statement |
 | `incidents.updated_at` | set to the insert time |
 
-The next run reads every evidence row for that `incident_id`, ordered by `recorded_at`, and includes them in the prompt. The agent must not contradict a recorded fact without saying so. That rule is in the prompt, not in a database constraint.
+The next run reads every evidence row for that `incident_id`, ordered by `recorded_at`, and includes them in the prompt. The note must not contradict a recorded fact without saying so. That rule is in the prompt, not in a database constraint.
 
 ### UC-3 Investigate
 
@@ -266,8 +266,8 @@ The engineer clicks Investigate. The HTTP request does not wait for the model.
 | API accepts | `investigation_runs` insert, `status` = `queued`, `incident_id` set, `requested_by` = the signed-in subject. Response 202 |
 | API rejects | no insert, when the case is `resolved` or `uq_incident_active_run` would be violated |
 | Worker claims | that row becomes `running`; if the incident is `open`, it becomes `investigating` |
-| Agent calls `record_evidence` | `evidence` insert on the same `incident_id`. `kind` is one of the five allowed values. `source` is whatever the model passed, default `operator` |
-| Agent calls `search_logs` | no database write. Matching lines stay in the tool result |
+| Worker searches | no database write for the search call itself. Queries are `timeout`, `timed out`, `500`, then a few words from the brief |
+| Worker keeps a matching line | `evidence` insert on the same `incident_id`. `kind` is `log`, or `change` for a commit. `source` is the connector or the log file name |
 | Success | run `status` = `completed`, `report` = the note, `finished_at` set. Incident returns to `open` if it is still `investigating`. A second success leaves that note |
 | Failure | run `status` = `failed`, `error` set, `report` left null. Same incident status rule. A second finish leaves this error |
 
@@ -280,9 +280,9 @@ The symptom is a latency jump. GitHub is not a table in this schema. If that plu
 | Stored | Not stored |
 | --- | --- |
 | Incident `summary` and `started_at` | Commit list |
-| An evidence row of `kind` = `change` only if a person or the agent records one | The deploy system itself |
+| An evidence row of `kind` = `change` only if a person adds one, or the worker keeps a commit | The deploy system itself |
 
-The note in `investigation_runs.report` is expected to say the deploy list is unknown when no change was recorded and no deploy tool ran.
+The note in `investigation_runs.report` is expected to say the deploy list is unknown when no change was recorded and GitHub was not searched.
 
 ### UC-5 Close the case
 
@@ -293,7 +293,7 @@ The engineer rolls back and marks the case mitigated, then resolved when the err
 | `incidents.status` | `mitigated`, later `resolved` |
 | `incidents.updated_at` | time of the patch |
 | `status_changes` insert | one row for `mitigated`, then one row for `resolved`, each with that person's subject |
-| `investigation_runs` | unchanged. The note remains the record of what the agent concluded |
+| `investigation_runs` | unchanged. The note remains the record of what the investigation concluded |
 
 A resolved case cannot queue another run until a person changes `status` away from `resolved`.
 
