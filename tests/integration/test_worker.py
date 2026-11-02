@@ -16,6 +16,8 @@ from incident_investigation_agent.db.models import (
 )
 from incident_investigation_agent.repositories.cases import open_incident, queue_run
 from incident_investigation_agent.services.investigation import (
+    TIMEOUT_ERROR,
+    WORKER_STOPPED_ERROR,
     execute,
     release_held_runs,
     release_stale_runs,
@@ -141,6 +143,7 @@ def test_a_run_left_by_a_stopped_worker_can_be_investigated_again():
         incident = session.scalars(select(Incident)).one()
     assert released == 1
     assert finished.status == "failed"
+    assert finished.error == TIMEOUT_ERROR
     assert incident.status == "open"
 
 
@@ -193,7 +196,7 @@ def test_a_deploy_releases_the_run_this_worker_holds():
         cases = {item.service: item.status for item in session.scalars(select(Incident))}
     assert released == 1
     assert held_run.status == "failed"
-    assert held_run.error == "The worker stopped before this run finished."
+    assert held_run.error == WORKER_STOPPED_ERROR
     assert cases["checkout-api"] == "open"
     assert other_run.status == "running"
     assert cases["payments-api"] == "investigating"
@@ -308,7 +311,7 @@ def test_stopping_during_the_note_does_not_put_the_run_back():
         incident = session.scalars(select(Incident)).one()
     assert finished.status == "failed"
     assert finished.report is None
-    assert finished.error == "The worker stopped before this run finished."
+    assert finished.error == WORKER_STOPPED_ERROR
     assert incident.status == "open"
 
 

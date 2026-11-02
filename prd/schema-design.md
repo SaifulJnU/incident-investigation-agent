@@ -223,7 +223,7 @@ Each of those writes also inserts `status_changes`. Moving to `investigating` re
 | `running` | `completed` | `finished_at`, `report` |
 | `running` | `failed` | `finished_at`, `error` |
 
-The first `completed` or `failed` wins. A later finish does not replace `report` or `error`. A missing parent case at execution time sets the run to `failed` with `error` = `Case not found.`
+The first `completed` or `failed` wins. A later finish does not replace `report` or `error`. A missing parent case at execution time sets the run to `failed` with `error` = `Case not found.` A run that is still `running` after `RUN_TIMEOUT_MINUTES` is failed with `This run passed the time limit before it finished.` A worker that is stopping fails only the runs it holds, with `The worker stopped before this run finished.`
 
 Finished runs stay on the case. A later Investigate inserts a new row. The partial unique index rejects a second `queued` or `running` row for the same `incident_id`. The API turns that integrity error into HTTP 409.
 

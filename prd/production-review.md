@@ -40,9 +40,9 @@ Both call `investigate_text`. That function runs `gather`, stores every matching
 
 The investigation is still a fixed word list plus one model call. Closing the split did not make the search able to ask a second question. That remains the weak part, and it is item 7 below.
 
-### A timeout and a deploy write the same error
+### A timeout and a deploy write different errors
 
-`release_stale_runs` and `release_held_runs` both store "The worker stopped before this run finished." The reason (`timeout` or `worker-stopped`) is only a log line. A case that sat for 20 minutes looks the same as a case interrupted by a deploy.
+`release_stale_runs` stores "This run passed the time limit before it finished." `release_held_runs` stores "The worker stopped before this run finished." The log line still names the reason (`timeout` or `worker-stopped`). A case that sat for 20 minutes no longer reads like a case interrupted by a deploy.
 
 ### The heartbeat is one shared row
 
@@ -110,7 +110,7 @@ Until the console path can call a tool by name, a new system is still a short Py
 Each one is small enough to review, and each one is visible to a person using the product or operating it.
 
 1. Done. The console, the command line, and the design notes all say Investigate gathers with the fixed query list and then writes one note.
-2. Store the real reason when a run is abandoned. A timeout and a stopped worker should read differently on the case.
+2. Done. A run that passed the time limit and a run released because the worker stopped store different errors on the case.
 3. Give each worker process its own heartbeat name, and delete only that row on stop. Then a second worker is a real scale step.
 4. Cap the case list with a page size, and cap how much text one finding can store.
 5. Count the queue cap per service, or reserve part of the 32 for other services, so one service cannot block the company.

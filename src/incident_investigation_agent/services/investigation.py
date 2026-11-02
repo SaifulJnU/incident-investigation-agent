@@ -27,6 +27,14 @@ from incident_investigation_agent.services.report import (
 
 log = logging.getLogger("incident_investigation_agent.worker")
 
+TIMEOUT_ERROR = "This run passed the time limit before it finished."
+WORKER_STOPPED_ERROR = "The worker stopped before this run finished."
+
+_ABANDONED_ERROR = {
+    "timeout": TIMEOUT_ERROR,
+    "worker-stopped": WORKER_STOPPED_ERROR,
+}
+
 
 def release_stale_runs(session: Session, *, older_than_minutes: int) -> int:
     """Fail runs a crashed worker left behind.
@@ -81,7 +89,7 @@ def _fail_abandoned(session: Session, runs, *, reason: str) -> int:
             )
             .values(
                 status="failed",
-                error="The worker stopped before this run finished.",
+                error=_ABANDONED_ERROR[reason],
                 finished_at=now,
             )
             .returning(InvestigationRun.id)

@@ -57,7 +57,8 @@ The image includes `examples/logs/checkout-api/api.log`. That file is the only s
 | Unable to locate credentials | The worker is on Bedrock. Local compose should log `provider=ollama`. Recreate the api and worker after confirming `MODEL_PROVIDER` is `ollama` in `docker-compose.yml`. |
 | Connection errors to port 11434 | Start Ollama on the host. From the host, `http://localhost:11434` should answer. |
 | The timeline has no log lines | The worker found no matching line to keep. The note should say that. A failed run stores the error instead of a note. |
-| Investigation running and it never finishes | A deploy releases the run that worker still holds, and the case goes back to open. A crash has no stop signal, so that row stays `running` until the timeout (20 minutes unless `RUN_TIMEOUT_MINUTES` says otherwise). Investigate is refused while the row is still running. |
+| This run passed the time limit before it finished. | The run stayed `running` longer than `RUN_TIMEOUT_MINUTES` (20 unless the environment says otherwise), usually because the worker crashed. The case is open again. Investigate again. |
+| The worker stopped before this run finished. | A deploy or a stop released the run this worker still held. The case is open again. Investigate again. A run that is still `running` refuses a new Investigate until one of these two messages is stored. |
 | The investigation queue is full | Wait until a queued run starts. The waiting list holds 32 runs unless `MAX_QUEUED_RUNS` says otherwise. A case that already has a run in progress shows a different message. |
 | `/api/live` does not answer | The API process is down. A database that is still starting does not fail this check, and neither does a stopped worker. |
 | `/api/ready` is unavailable | The process is up and waiting on the database, or the case schema is not there yet. It becomes ok after migrations can read `incidents`. |
