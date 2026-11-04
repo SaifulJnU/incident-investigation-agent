@@ -18,7 +18,7 @@ It is not yet a service a company should page on. The record, the queue, and the
 | Queue | Right shape, small ceiling | `FOR UPDATE SKIP LOCKED`, a cap of 32 waiting runs, a 15-second connector timeout, a 20-minute run timeout |
 | Investigation | The weak part | The console does not let the model search. A word list does |
 | Operate it | Thin | Live, ready, and a worker heartbeat exist. There is no CI workflow, no metrics, and no page size on the case list |
-| Scale | One company, a quiet hour | A second worker is not safe. A busy hour of investigations will queue, then return 429 |
+| Scale | One company, a quiet hour | A second worker can run. A busy hour of investigations will queue, then return 429 |
 
 ## What already holds
 
@@ -27,7 +27,7 @@ These are worth keeping. Later work should sit on them.
 - The API returns before the model runs. The worker claims the run.
 - A connector that does not finish is dropped for that source. The other sources are kept.
 - A failed run stores the error with tokens and configured secrets replaced.
-- A stopping worker releases only the runs it holds, and clears its heartbeat.
+- A stopping worker releases only the runs it holds, and clears only its own heartbeat.
 - Postgres is the queue. There is no second bus to operate.
 - The agent cannot commit, push, restart, or roll back. A person marks mitigated or resolved.
 - Each company is meant to run its own database. That choice is the right one.
@@ -44,9 +44,9 @@ The investigation is still a fixed word list plus one model call. Closing the sp
 
 `release_stale_runs` stores "This run passed the time limit before it finished." `release_held_runs` stores "The worker stopped before this run finished." The log line still names the reason (`timeout` or `worker-stopped`). A case that sat for 20 minutes no longer reads like a case interrupted by a deploy.
 
-### The heartbeat is one shared row
+### Each worker process has its own heartbeat
 
-`worker_beats` is keyed by the name `worker`. A second process overwrites that row. A process that is stopping deletes it. Health can report the worker down while another worker is alive, or up while the only worker has exited. The stop path is careful about which runs it releases. The beat is not careful about which process it represents.
+`worker_beats.name` is `<hostname>-<pid>`. A second process does not overwrite the first. A process that is stopping deletes only its row. Health stays up while any row is newer than 20 seconds, and goes down when the last fresh row is gone. A crash still leaves its row until that timestamp is stale.
 
 ### The case list and the evidence rows have no bound
 
@@ -81,7 +81,7 @@ Scale here means more incidents for one company, in that company's own Postgres.
 | A few investigations an hour | Fine. The queue, the skip lock, and one worker are enough |
 | Several at once | One worker claims four runs. Each run fans out searches on up to eight threads. The model call is the slow part |
 | A bad hour | The waiting list holds 32 runs, then Investigate returns 429. Running runs do not count, so four running plus 32 waiting is the pile-up |
-| A second worker process | Unsafe until the heartbeat row is per process. The claim lock itself is safe |
+| A second worker process | Safe. Each process has its own heartbeat row and deletes only that row on stop. The claim lock was already safe |
 | Large log volume | Postgres will not be the first limit. CloudWatch, Datadog, Loki, and GitHub will, because one case fires a handful of queries at each of them |
 | Many companies | A separate deployment each. Do not add a tenant column to this schema |
 
@@ -111,7 +111,7 @@ Each one is small enough to review, and each one is visible to a person using th
 
 1. Done. The console, the command line, and the design notes all say Investigate gathers with the fixed query list and then writes one note.
 2. Done. A run that passed the time limit and a run released because the worker stopped store different errors on the case.
-3. Give each worker process its own heartbeat name, and delete only that row on stop. Then a second worker is a real scale step.
+3. Done. Each worker process writes its own heartbeat row and deletes only that row on stop.
 4. Cap the case list with a page size, and cap how much text one finding can store.
 5. Count the queue cap per service, or reserve part of the 32 for other services, so one service cannot block the company.
 6. Add a workflow that runs `pytest` on a push. Commit `web/package-lock.json` so the console install is pinned.

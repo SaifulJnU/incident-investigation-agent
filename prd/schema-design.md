@@ -164,18 +164,18 @@ LIMIT 1
 FOR UPDATE SKIP LOCKED;
 ```
 
-`SKIP LOCKED` lets a second worker take the next queued row instead of waiting on the row the first worker holds. One worker is the current deployment. The claim query is already safe for more than one.
+`SKIP LOCKED` lets a second worker take the next queued row instead of waiting on the row the first worker holds. Each process writes its own heartbeat row, so a second worker is safe to run. The claim query was already safe for more than one.
 
 ### 2.4 `worker_beats`
 
-One row for the worker process. It is not part of a case. The worker updates `beat_at` every few seconds, and `GET /api/health` treats a missing or stale row as a dead worker. That check is not liveness. `GET /api/live` does not read this table. `GET /api/ready` reads `incidents` and does not read this table.
+One row per worker process. It is not part of a case. Each process updates its own `beat_at` every few seconds. `GET /api/health` treats the worker as up when any row is inside the last 20 seconds, and as down when every row is missing or stale. That check is not liveness. `GET /api/live` does not read this table. `GET /api/ready` reads `incidents` and does not read this table.
 
 | Column | Type | Null | Meaning |
 | --- | --- | --- | --- |
-| `name` | `varchar(32)` | no | Primary key. The current deployment writes `worker` |
+| `name` | `varchar(128)` | no | Primary key. `<hostname>-<pid>` for that process |
 | `beat_at` | `timestamptz` | no | When this process last showed it was alive |
 
-A stopped worker deletes its row. A crash cannot, so the row stays until `beat_at` is older than 20 seconds.
+A stopped worker deletes only its own row. A crash cannot, so that row stays until `beat_at` is older than 20 seconds. Another process's row is left in place.
 
 ### 2.5 `status_changes`
 
@@ -325,4 +325,4 @@ Company A and Company B run the same images. Each has its own PostgreSQL databas
 
 ## 6. Revision
 
-`alembic/versions/0001_case_file.py` creates the three tables, the four check constraints, the foreign keys, and the indexes in section 2. `0002_actors` adds `incidents.opened_by` and `investigation_runs.requested_by`. `0003_case_actors` adds the display names, who mitigated or resolved the case, and an index on `incidents.status` for the case list filter. `0004_worker_beat` adds `worker_beats`. `0005_status_history` adds `status_changes`. The API image runs `alembic upgrade head` before it serves traffic. The worker waits until `investigation_runs` and `worker_beats` can be selected.
+`alembic/versions/0001_case_file.py` creates the three tables, the four check constraints, the foreign keys, and the indexes in section 2. `0002_actors` adds `incidents.opened_by` and `investigation_runs.requested_by`. `0003_case_actors` adds the display names, who mitigated or resolved the case, and an index on `incidents.status` for the case list filter. `0004_worker_beat` adds `worker_beats`. `0005_status_history` adds `status_changes`. `0006_worker_beat_name` widens `worker_beats.name` so a host and a process id both fit. The API image runs `alembic upgrade head` before it serves traffic. The worker waits until `investigation_runs` and `worker_beats` can be selected.

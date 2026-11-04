@@ -14,6 +14,7 @@ from incident_investigation_agent.db.session import session_factory_from_url
 from incident_investigation_agent.services.heartbeat import (
     BEAT_INTERVAL_SECONDS,
     clear_beat,
+    process_beat_name,
     record_beat,
 )
 from incident_investigation_agent.services.investigation import (
@@ -59,23 +60,29 @@ def release_on_stop(factory, run_ids) -> int:
         return released
 
 
-def silence_beat(factory) -> None:
-    """Remove the heartbeat so a stopped worker does not look alive."""
+def silence_beat(factory, name: str) -> None:
+    """Remove this process's heartbeat so a stop does not look like every worker died."""
     with _beat_lock:
         with factory() as session:
-            clear_beat(session)
+            clear_beat(session, name=name)
             session.commit()
 
 
-def run_heartbeat(factory, stop: threading.Event, interval: float = BEAT_INTERVAL_SECONDS) -> None:
-    """Write a beat until stop is set, including while a note is in progress."""
+def run_heartbeat(
+    factory,
+    stop: threading.Event,
+    interval: float = BEAT_INTERVAL_SECONDS,
+    *,
+    name: str,
+) -> None:
+    """Write this process's beat until stop is set, including while a note is in progress."""
     while not stop.is_set():
         try:
             with _beat_lock:
                 if stop.is_set():
                     return
                 with factory() as session:
-                    record_beat(session)
+                    record_beat(session, name=name)
                     session.commit()
         except Exception:
             log.exception("worker heartbeat failed")
@@ -90,19 +97,22 @@ def main() -> None:
     factory = session_factory_from_url(settings.database_url)
     wait_for_database(factory)
     stop = threading.Event()
-    _listen_for_stop(factory, stop)
+    beat = process_beat_name()
+    _listen_for_stop(factory, stop, beat)
     threading.Thread(
         target=run_heartbeat,
         args=(factory, stop),
+        kwargs={"name": beat},
         name="worker-heartbeat",
         daemon=True,
     ).start()
     names = ",".join(enabled_connectors(settings.app_env, settings.connectors))
     log.info(
-        "worker ready provider=%s env=%s connectors=%s",
+        "worker ready provider=%s env=%s connectors=%s beat=%s",
         settings.model_provider,
         settings.app_env,
         names,
+        beat,
     )
     while True:
         try:
@@ -143,16 +153,16 @@ def _run_available(factory, settings: Settings) -> bool:
             drop_run(run_id)
 
 
-def _listen_for_stop(factory, stop: threading.Event) -> None:
+def _listen_for_stop(factory, stop: threading.Event, beat: str) -> None:
     def _on_stop(signum, _frame):
         stop.set()
         try:
-            silence_beat(factory)
+            silence_beat(factory, beat)
         except Exception:
             log.exception("could not clear the worker heartbeat")
         try:
             released = release_on_stop(factory, held_run_ids())
-            log.info("worker stopped signal=%s released=%s", signum, released)
+            log.info("worker stopped signal=%s released=%s beat=%s", signum, released, beat)
         except Exception:
             log.exception("could not release held runs")
         raise SystemExit(0)

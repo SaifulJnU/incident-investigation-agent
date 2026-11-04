@@ -46,9 +46,9 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 | Stored errors | A failed run keeps the error with tokens and configured secrets replaced. A connector failure that is not an HTTP response is stored the same way |
 | Status history | Open, investigating, mitigated, and resolved are kept in order. A finished run records the return to open. A later edit does not erase the earlier one |
 | Queue | At most 32 runs may wait. A further Investigate returns 429 until one of them starts. A running or finished run does not count |
-| Probes | `/api/live` is 200 when the process is up. `/api/ready` is 503 while it waits on the database. `/api/health` still reports the worker |
+| Probes | `/api/live` is 200 when the process is up. `/api/ready` is 503 while it waits on the database. `/api/health` reports the worker down only when every heartbeat is missing or stale |
 | Case page | The incident note sits under the brief, with how long it took. Below that, one record lists status, evidence, and each note in time order |
-| Tests | 84 automated tests for access, connectors, the API, the worker, and the command line |
+| Tests | 88 automated tests for access, connectors, the API, the worker, and the command line |
 | Stack | Python, FastAPI, Postgres, Alembic, React |
 
 ## Run it

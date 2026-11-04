@@ -62,7 +62,7 @@ The image includes `examples/logs/checkout-api/api.log`. That file is the only s
 | The investigation queue is full | Wait until a queued run starts. The waiting list holds 32 runs unless `MAX_QUEUED_RUNS` says otherwise. A case that already has a run in progress shows a different message. |
 | `/api/live` does not answer | The API process is down. A database that is still starting does not fail this check, and neither does a stopped worker. |
 | `/api/ready` is unavailable | The process is up and waiting on the database, or the case schema is not there yet. It becomes ok after migrations can read `incidents`. |
-| `/api/health` says the worker is down | The worker writes a heartbeat every 5 seconds. A beat older than 20 seconds, or a worker that has stopped and cleared its beat, is `worker: down` and the status is `degraded`. The API process can still be live and ready. Check `docker compose logs worker`. |
+| `/api/health` says the worker is down | Each worker writes its own heartbeat every 5 seconds, named from its host and process id. Health is `worker: down` when every beat is missing or older than 20 seconds. One process stopping deletes only its row, so another worker that is still beating stays `ok`. The API process can still be live and ready. Check `docker compose logs worker`. |
 | Need the log for one investigation | Copy the run id from the case. Worker lines for that run end with `case=<id> run=<id>`. |
 | One source never answers | That source is recorded as not checked after `CONNECTOR_TIMEOUT_SECONDS` (15 unless the environment says otherwise). The other sources are still written into the note. The worker log contains `search timed out`. |
 | A failed run shows `[redacted]` | The stored error and the worker line `investigation failed` replace tokens and configured secrets. The rest of the message stays. |
@@ -132,7 +132,7 @@ OIDC_CLIENT_ID=case-file
 
 `APP_ENV=local` searches `LOG_DIR/<service>`. `APP_ENV=prod` searches CloudWatch, Datadog, Loki, and GitHub with the values above. Set `CONNECTORS` to a shorter list when the company does not use every system, for example `CONNECTORS=cloudwatch,github`. A case for `checkout-api` reads log group `CLOUDWATCH_LOG_GROUP_PREFIX` + `checkout-api`, Datadog tag `service:checkout-api`, Loki label `{service="checkout-api"}`, and GitHub repository `GITHUB_ORG/checkout-api`. Override one service with `CLOUDWATCH_LOG_GROUPS` or `GITHUB_REPOS` (`checkout-api=acme/checkout`). The worker role needs `logs:FilterLogEvents` for CloudWatch. Do not put AWS keys in the environment file when the task role already has them.
 
-Give the worker AWS credentials with permission to invoke that Bedrock model. Enable the model in the Bedrock console. The API container runs `alembic upgrade head` before it serves traffic. Run one worker process. Put the web container behind HTTPS. Proxy `/api` to the API the way `deploy/nginx.conf` does.
+Give the worker AWS credentials with permission to invoke that Bedrock model. Enable the model in the Bedrock console. The API container runs `alembic upgrade head` before it serves traffic. Run one or more worker processes. Each writes a heartbeat under its host and process id, and a stop deletes only that row. Put the web container behind HTTPS. Proxy `/api` to the API the way `deploy/nginx.conf` does.
 
 To keep a local model in production, leave `MODEL_PROVIDER=ollama` and point `OLLAMA_HOST` at an Ollama server the worker can reach. That is a valid company choice. Bedrock is the supported cloud model, not a requirement of the case record.
 
