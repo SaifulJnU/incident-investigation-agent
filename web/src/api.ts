@@ -117,9 +117,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function listIncidents(status?: CaseStatus): Promise<Incident[]> {
-  const query = status ? `?status=${encodeURIComponent(status)}` : "";
-  return request(`/api/incidents${query}`);
+export interface IncidentPage {
+  cases: Incident[];
+  next_before: string | null;
+  next_before_id: string | null;
+}
+
+export function listIncidents(
+  status?: CaseStatus,
+  before?: { at: string; id: string },
+): Promise<IncidentPage> {
+  const params = new URLSearchParams();
+  if (status) {
+    params.set("status", status);
+  }
+  if (before) {
+    params.set("before", before.at);
+    params.set("before_id", before.id);
+  }
+  const query = params.toString();
+  return request(`/api/incidents${query ? `?${query}` : ""}`);
 }
 
 export function incidentCounts(): Promise<Record<CaseStatus | "all", number>> {

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   createIncident,
@@ -6,6 +6,7 @@ import {
   listIncidents,
   type CaseStatus,
   type Incident,
+  type IncidentPage,
   type Severity,
 } from "./api";
 import { elapsed, formatWhen, SEVERITY_LABEL, STATUS_LABEL } from "./format";
@@ -32,6 +33,13 @@ function who(name: string, subject: string): string {
   return name || subject;
 }
 
+function pageCursor(page: IncidentPage): { at: string; id: string } | null {
+  if (page.next_before && page.next_before_id) {
+    return { at: page.next_before, id: page.next_before_id };
+  }
+  return null;
+}
+
 function lastActor(item: Incident): string {
   if (item.status === "resolved") {
     const name = who(item.resolved_by_name, item.resolved_by);
@@ -50,10 +58,13 @@ export function IncidentList() {
   const [params, setParams] = useSearchParams();
   const filter = selectedStatus(params.get("status"));
   const [cases, setCases] = useState<Incident[]>([]);
+  const [next, setNext] = useState<{ at: string; id: string } | null>(null);
   const [counts, setCounts] = useState<Record<CaseStatus | "all", number> | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const request = useRef(0);
   const [now, setNow] = useState(() => Date.now());
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
@@ -68,32 +79,62 @@ export function IncidentList() {
   }, []);
 
   useEffect(() => {
-    let gone = false;
+    const ticket = ++request.current;
     setLoading(true);
+    setLoadingOlder(false);
     setListError(null);
     Promise.all([listIncidents(filter === "all" ? undefined : filter), incidentCounts()])
-      .then(([rows, totals]) => {
-        if (!gone) {
-          setCases(rows);
-          setCounts(totals);
-          setListError(null);
+      .then(([page, totals]) => {
+        if (request.current !== ticket) {
+          return;
         }
+        setCases(page.cases);
+        setNext(pageCursor(page));
+        setCounts(totals);
+        setListError(null);
       })
       .catch((err: unknown) => {
-        if (!gone) {
-          setCases([]);
-          setListError(err instanceof Error ? err.message : "Could not load cases.");
+        if (request.current !== ticket) {
+          return;
         }
+        setCases([]);
+        setNext(null);
+        setListError(err instanceof Error ? err.message : "Could not load cases.");
       })
       .finally(() => {
-        if (!gone) {
+        if (request.current === ticket) {
           setLoading(false);
         }
       });
-    return () => {
-      gone = true;
-    };
   }, [filter]);
+
+  async function loadOlder() {
+    if (!next || loadingOlder) {
+      return;
+    }
+    const ticket = request.current;
+    const cursor = next;
+    const status = filter === "all" ? undefined : filter;
+    setLoadingOlder(true);
+    setListError(null);
+    try {
+      const page = await listIncidents(status, cursor);
+      if (request.current !== ticket) {
+        return;
+      }
+      setCases((current) => [...current, ...page.cases]);
+      setNext(pageCursor(page));
+    } catch (err: unknown) {
+      if (request.current !== ticket) {
+        return;
+      }
+      setListError(err instanceof Error ? err.message : "Could not load older cases.");
+    } finally {
+      if (request.current === ticket) {
+        setLoadingOlder(false);
+      }
+    }
+  }
 
   function chooseFilter(next: CaseStatus | "all") {
     const updated = new URLSearchParams(params);
@@ -208,13 +249,13 @@ export function IncidentList() {
           </div>
         </div>
         {loading ? <p className="quiet board-note">Loading cases.</p> : null}
-        {!loading && listError ? (
+        {!loading && listError && cases.length === 0 ? (
           <p className="problem board-note" role="alert">
             {listError}
           </p>
         ) : null}
         {!loading && !listError && cases.length === 0 ? <p className="quiet board-note">{empty}</p> : null}
-        {!loading && !listError ? (
+        {!loading && cases.length > 0 ? (
           <ul className="case-list">
             {cases.map((item) => {
               const actor = lastActor(item);
@@ -242,6 +283,18 @@ export function IncidentList() {
               );
             })}
           </ul>
+        ) : null}
+        {!loading && listError && cases.length > 0 ? (
+          <p className="problem board-note" role="alert">
+            {listError}
+          </p>
+        ) : null}
+        {!loading && next ? (
+          <div className="older">
+            <button type="button" className="quiet-button" onClick={loadOlder} disabled={loadingOlder}>
+              {loadingOlder ? "Loading older cases" : "Older cases"}
+            </button>
+          </div>
         ) : null}
       </section>
     </main>

@@ -104,7 +104,7 @@ Checks: `ck_incident_severity`, `ck_incident_status`.
 
 `started_at` and `created_at` are different. A case opened at 14:10 about an error that began at 14:02 stores 14:02 in `started_at`.
 
-The list API orders cases by `started_at` descending. There is no secondary index on `started_at` in revision `0001_case_file`.
+The list API orders cases by `started_at` descending, then `id` descending, and returns at most 50. When another page exists, the response includes that page's last `started_at` and `id`. The next request passes them as `before` and `before_id`, and receives cases that started earlier, or that started at the same time with a smaller `id`. There is no secondary index on `started_at` in revision `0001_case_file`. The counts endpoint still returns every case in the grant.
 
 ### 2.2 `evidence`
 
@@ -123,7 +123,7 @@ Check: `ck_evidence_kind`. Index: `ix_evidence_incident_id`.
 
 Reads for one case are ordered by `recorded_at` ascending. That order is the timeline the console and the next investigation prompt use.
 
-Raw log files are not stored. A `log` row is the line or conclusion that was worth keeping.
+Raw log files are not stored. A `log` row is the line or conclusion that was worth keeping. A line the worker keeps is at most 2000 characters. A longer line keeps its start and ends with `...`. A note a person adds is not cut by that limit.
 
 ### 2.3 `investigation_runs`
 
@@ -267,7 +267,7 @@ The engineer clicks Investigate. The HTTP request does not wait for the model.
 | API rejects | no insert, when the case is `resolved` or `uq_incident_active_run` would be violated |
 | Worker claims | that row becomes `running`; if the incident is `open`, it becomes `investigating` |
 | Worker searches | no database write for the search call itself. Queries are `timeout`, `timed out`, `500`, then a few words from the brief |
-| Worker keeps a matching line | `evidence` insert on the same `incident_id`. `kind` is `log`, or `change` for a commit. `source` is the connector or the log file name |
+| Worker keeps a matching line | `evidence` insert on the same `incident_id`. `kind` is `log`, or `change` for a commit. `source` is the connector or the log file name. `summary` is at most 2000 characters |
 | Success | run `status` = `completed`, `report` = the note, `finished_at` set. Incident returns to `open` if it is still `investigating`. A second success leaves that note |
 | Failure | run `status` = `failed`, `error` set, `report` left null. Same incident status rule. A second finish leaves this error |
 

@@ -116,6 +116,12 @@ class StatusChangeOut(BaseModel):
     changed_at: datetime
 
 
+class IncidentPage(BaseModel):
+    cases: list[IncidentOut]
+    next_before: datetime | None = None
+    next_before_id: UUID | None = None
+
+
 class IncidentDetail(IncidentOut):
     evidence: list[EvidenceOut]
     runs: list[RunOut]

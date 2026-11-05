@@ -160,7 +160,7 @@ status_changes
 
 One case may have many runs. The console shows the latest. One case may have at most one queued or running run. The deployment also refuses a new run when queued runs already number `MAX_QUEUED_RUNS` (32 by default). A running or finished run does not count toward that bound. Each status edit is kept. The incident row still stores the latest opener, mitigator, and resolver.
 
-External systems are not copied into Postgres wholesale. A connector returns the lines or commits the fixed queries asked for, and the worker stores each matching line.
+External systems are not copied into Postgres wholesale. A connector returns the lines or commits the fixed queries asked for, and the worker stores each matching line. A line longer than 2000 characters keeps its start and ends with `...`. The case list returns 50 cases at a time, newest start first.
 
 ## Deployment shapes
 

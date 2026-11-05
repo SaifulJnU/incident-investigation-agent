@@ -148,7 +148,7 @@ To keep a local model in production, leave `MODEL_PROVIDER=ollama` and point `OL
 | Mark mitigated | No | Records who stopped the immediate harm |
 | Mark resolved | No | Records who closed the case and blocks another investigation |
 
-Above the case list, **All**, **Open**, **Investigating**, **Mitigated**, and **Resolved** filter that list. The choice stays in the page address.
+Above the case list, **All**, **Open**, **Investigating**, **Mitigated**, and **Resolved** filter that list. The choice stays in the page address. The list shows 50 cases. **Older cases** loads the next 50. The counts on the filters are the whole list, not just the page on screen.
 
 ## Stop the local stack
 

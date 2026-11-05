@@ -2,7 +2,13 @@ import time
 from pathlib import Path
 
 from incident_investigation_agent.core.config import Settings
-from incident_investigation_agent.services.gather import Finding, SearchBatch, _combine, gather
+from incident_investigation_agent.services.gather import (
+    FINDING_TEXT_LIMIT,
+    Finding,
+    SearchBatch,
+    _combine,
+    gather,
+)
 from incident_investigation_agent.services.investigation import _note_prompt
 
 
@@ -178,6 +184,27 @@ def test_a_hung_connector_fails_that_source_and_keeps_the_others(tmp_path, monke
     assert "should not be kept" not in batch.text
     assert any("did not finish within 1 second" in line for line in batch.unchecked)
     assert all("should not be kept" not in item.summary for item in batch.findings)
+
+
+def test_a_long_matching_line_keeps_its_start():
+    short = "ERROR timeout: vault"
+    exact = "E" * FINDING_TEXT_LIMIT
+    long_line = "ERROR timeout: " + ("x" * FINDING_TEXT_LIMIT)
+    batch = _combine(
+        [
+            (
+                "search_logs",
+                "timeout",
+                "\n".join([short, exact, long_line, long_line + "more", long_line + "other"]),
+            )
+        ]
+    )
+    summaries = [item.summary for item in batch.findings]
+    assert short in summaries
+    assert exact in summaries
+    clipped = [item for item in summaries if item.endswith("...")]
+    assert clipped == [long_line[: FINDING_TEXT_LIMIT - 3].rstrip() + "..."]
+    assert all(len(item) <= FINDING_TEXT_LIMIT for item in summaries)
 
 
 def test_note_prompt_leads_with_each_match_once():

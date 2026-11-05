@@ -243,7 +243,7 @@ def test_on_call_cannot_open_or_read_another_service(client):
     hidden = client.get(f"/api/incidents/{incident_id}", headers=oncall)
     assert hidden.status_code == 404
     listed = client.get("/api/incidents", headers=oncall)
-    assert listed.json() == []
+    assert listed.json() == {"cases": [], "next_before": None, "next_before_id": None}
 
 
 def test_rejects_blank_title(client):
@@ -283,11 +283,12 @@ def test_mark_mitigated(client):
     assert patched.json()["status"] == "mitigated"
     assert patched.json()["mitigated_by_name"] == "On-call engineer"
     listed = client.get("/api/incidents", headers=headers)
-    assert listed.json()[0]["status"] == "mitigated"
+    assert listed.json()["cases"][0]["status"] == "mitigated"
+    assert listed.json()["next_before"] is None
     mitigated = client.get("/api/incidents?status=mitigated", headers=headers)
-    assert len(mitigated.json()) == 1
+    assert len(mitigated.json()["cases"]) == 1
     resolved = client.get("/api/incidents?status=resolved", headers=headers)
-    assert resolved.json() == []
+    assert resolved.json()["cases"] == []
     totals = client.get("/api/incidents/counts", headers=headers)
     assert totals.json()["mitigated"] == 1
     assert totals.json()["all"] == 1
@@ -349,6 +350,75 @@ def test_a_resolved_case_stays_closed(client):
         )
         assert refused.status_code == 409
         assert refused.json()["detail"] == "This case is resolved."
+
+
+def test_the_case_list_returns_one_page_then_the_next(client, monkeypatch):
+    monkeypatch.setattr(
+        "incident_investigation_agent.api.routes.incidents.CASE_PAGE_SIZE",
+        2,
+    )
+    headers = _auth(client, "oncall", "oncall-password")
+    for title, started in (
+        ("Oldest", "2026-09-22T12:00:00Z"),
+        ("Same start A", "2026-09-22T13:00:00Z"),
+        ("Same start B", "2026-09-22T13:00:00Z"),
+        ("Newest", "2026-09-22T14:00:00Z"),
+    ):
+        created = client.post(
+            "/api/incidents",
+            headers=headers,
+            json={
+                "title": title,
+                "service": "checkout-api",
+                "severity": "sev2",
+                "summary": "POST /checkout returns 500.",
+                "started_at": started,
+            },
+        )
+        assert created.status_code == 201
+
+    first = client.get("/api/incidents", headers=headers)
+    assert first.status_code == 200
+    page = first.json()
+    titles = [item["title"] for item in page["cases"]]
+    assert titles[0] == "Newest"
+    assert titles[1] in {"Same start A", "Same start B"}
+    assert page["next_before_id"] == page["cases"][-1]["id"]
+
+    second = client.get(
+        "/api/incidents",
+        headers=headers,
+        params={"before": page["next_before"], "before_id": page["next_before_id"]},
+    )
+    assert second.status_code == 200
+    follow = second.json()
+    assert follow["next_before"] is None
+    assert follow["next_before_id"] is None
+    follow_titles = [item["title"] for item in follow["cases"]]
+    assert "Oldest" in follow_titles
+    assert set(titles + follow_titles) == {
+        "Oldest",
+        "Same start A",
+        "Same start B",
+        "Newest",
+    }
+    assert {item["id"] for item in page["cases"]}.isdisjoint(item["id"] for item in follow["cases"])
+
+
+def test_a_page_cursor_needs_both_fields(client):
+    headers = _auth(client, "oncall", "oncall-password")
+    missing_id = client.get(
+        "/api/incidents",
+        headers=headers,
+        params={"before": "2026-09-22T14:00:00Z"},
+    )
+    assert missing_id.status_code == 422
+    missing_time = client.get(
+        "/api/incidents",
+        headers=headers,
+        params={"before_id": "00000000-0000-0000-0000-000000000001"},
+    )
+    assert missing_time.status_code == 422
 
 
 def test_dev_sign_in_rejects_a_wrong_password(client):

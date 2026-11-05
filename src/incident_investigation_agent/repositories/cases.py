@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from incident_investigation_agent.db.models import EvidenceItem, Incident, InvestigationRun, StatusChange, utcnow
@@ -49,21 +49,41 @@ class DbCaseStore:
 
 
 CASE_STATUSES = ("open", "investigating", "mitigated", "resolved")
+# One response from the case list. The next page starts before the last row.
+CASE_PAGE_SIZE = 50
 
 
 def list_incidents(
     session: Session,
     services: frozenset[str] | None = None,
     status: str | None = None,
-) -> list[Incident]:
-    statement = select(Incident).order_by(Incident.started_at.desc())
+    *,
+    before: datetime | None = None,
+    before_id: uuid.UUID | None = None,
+    limit: int = CASE_PAGE_SIZE,
+) -> tuple[list[Incident], bool]:
+    """Newest start time first. A second case with the same start follows by id.
+
+    `before` and `before_id` together are the last case already shown. The extra
+    row is not returned; it only says whether another page exists.
+    """
+    statement = select(Incident).order_by(Incident.started_at.desc(), Incident.id.desc())
     if services is not None:
         if not services:
-            return []
+            return [], False
         statement = statement.where(Incident.service.in_(services))
     if status is not None:
         statement = statement.where(Incident.status == status)
-    return list(session.scalars(statement).all())
+    if before is not None and before_id is not None:
+        statement = statement.where(
+            or_(
+                Incident.started_at < before,
+                and_(Incident.started_at == before, Incident.id < before_id),
+            )
+        )
+    rows = list(session.scalars(statement.limit(limit + 1)).all())
+    more = len(rows) > limit
+    return rows[:limit], more
 
 
 def incident_counts(session: Session, services: frozenset[str] | None = None) -> dict[str, int]:

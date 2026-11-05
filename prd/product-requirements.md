@@ -75,6 +75,7 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 - A person can open a case with a title, service, severity (`sev1` to `sev4`), start time, and a description of what happened, when that service is in their grant.
 - Opening a case for another service returns 403. Reading another service's case returns 404.
 - A case has a status: open, investigating, mitigated, resolved.
+- The case list returns at most 50 cases, newest start time first. When more exist, the response names the start time and id of the last case. The next request passes those as `before` and `before_id`. Counts on the filters still cover every case in the grant.
 - Only a person moves a case to mitigated or resolved.
 - Investigate is refused when a run is already queued or running, and when the case is resolved.
 - Investigate is refused with 429 when the number of queued runs is already `MAX_QUEUED_RUNS` (32 unless the environment says otherwise). A running or finished run does not count.
@@ -84,14 +85,14 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 - Investigate stores a run and returns without waiting for the model. The waiting list holds at most `MAX_QUEUED_RUNS` runs.
 - The worker sends the model the title, service, severity, start time, description, and evidence already on the case.
 - Before that call, the worker searches every enabled connector for `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three other words from the brief. GitHub is asked for recent commits once, not once per word.
-- The worker stores each matching line as evidence. The model does not choose the searches and does not call tools.
+- The worker stores each matching line as evidence, at most 2000 characters. The model does not choose the searches and does not call tools.
 - The worker stores the model's final text as the incident note.
 - The console shows the latest run: provider, model name, status, note, and error if the run failed.
 
 ### 6.3 Evidence
 
 - A person can add a note of kind symptom, log, timeline, change, or hypothesis.
-- The worker adds the same kinds for each matching line it keeps. A log line is `log`. A GitHub commit is `change`.
+- The worker adds the same kinds for each matching line it keeps. A log line is `log`. A GitHub commit is `change`. A matching line is stored at most 2000 characters. A longer line keeps its start and ends with `...`. A note a person writes is not cut by that limit.
 - The console groups them: timeline (symptom, timeline, change), hypotheses, log lines.
 
 ### 6.4 Tools that must be pluggable

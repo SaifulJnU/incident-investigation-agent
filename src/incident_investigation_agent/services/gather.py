@@ -21,6 +21,9 @@ from incident_investigation_agent.infrastructure.connectors import (
 log = logging.getLogger("incident_investigation_agent.gather")
 
 QUERIES = ("timeout", "timed out", "500")
+# A matching line stored on the case. A longer line keeps its start.
+FINDING_TEXT_LIMIT = 2000
+_CLIP = "..."
 _EXTRA_QUERIES = 3
 _EXTRA_VERSIONS = 2
 _EXTRA_CODES = 2
@@ -340,6 +343,7 @@ def _combine(blocks: list[tuple[str, str, str]]) -> SearchBatch:
                 status = status or summary
                 continue
             hits += 1
+            summary = _clip_finding(summary)
             if summary in seen:
                 continue
             seen.add(summary)
@@ -353,6 +357,14 @@ def _combine(blocks: list[tuple[str, str, str]]) -> SearchBatch:
             continue
         misses.append(title)
     return SearchBatch("\n".join(lines), tuple(findings), tuple(misses), tuple(unchecked))
+
+
+def _clip_finding(summary: str) -> str:
+    """Keep the start of a long line so one hit cannot fill the case."""
+    if len(summary) <= FINDING_TEXT_LIMIT:
+        return summary
+    keep = FINDING_TEXT_LIMIT - len(_CLIP)
+    return summary[:keep].rstrip() + _CLIP
 
 
 def _status_line(line: str) -> bool:

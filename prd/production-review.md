@@ -17,7 +17,7 @@ It is not yet a service a company should page on. The record, the queue, and the
 | Access | Strong for one company | 401 without a token, 403 for a service outside the grant, 404 for another service's case, dev login refused when `APP_ENV=prod` |
 | Queue | Right shape, small ceiling | `FOR UPDATE SKIP LOCKED`, a cap of 32 waiting runs, a 15-second connector timeout, a 20-minute run timeout |
 | Investigation | The weak part | The console does not let the model search. A word list does |
-| Operate it | Thin | Live, ready, and a worker heartbeat exist. There is no CI workflow, no metrics, and no page size on the case list |
+| Operate it | Thin | Live, ready, and a worker heartbeat exist. The case list returns one page. There is no CI workflow and no metrics |
 | Scale | One company, a quiet hour | A second worker can run. A busy hour of investigations will queue, then return 429 |
 
 ## What already holds
@@ -48,9 +48,9 @@ The investigation is still a fixed word list plus one model call. Closing the sp
 
 `worker_beats.name` is `<hostname>-<pid>`. A second process does not overwrite the first. A process that is stopping deletes only its row. Health stays up while any row is newer than 20 seconds, and goes down when the last fresh row is gone. A crash still leaves its row until that timestamp is stale.
 
-### The case list and the evidence rows have no bound
+### The case list is one page, and a finding is a short quote
 
-`list_incidents` returns every case for the grant, ordered by start time. A year of cases is one response. Each search hit is stored as evidence with no length cap. One investigation can run about ten queries on each log system, twenty lines a query, across every enabled connector. Those lines are copied onto the case.
+`list_incidents` returns at most 50 cases, ordered by start time and then by id. The response names the last case when another page exists. The counts above the list are still the whole grant. A matching line stored as evidence is at most 2000 characters. A longer line keeps its start and ends with `...`. One investigation can still run about ten queries on each log system, twenty lines a query, across every enabled connector. Those lines are copied onto the case, each one cut at that limit.
 
 ### The queue cap is global
 
@@ -112,7 +112,7 @@ Each one is small enough to review, and each one is visible to a person using th
 1. Done. The console, the command line, and the design notes all say Investigate gathers with the fixed query list and then writes one note.
 2. Done. A run that passed the time limit and a run released because the worker stopped store different errors on the case.
 3. Done. Each worker process writes its own heartbeat row and deletes only that row on stop.
-4. Cap the case list with a page size, and cap how much text one finding can store.
+4. Done. The case list returns 50 cases at a time, and a stored finding keeps at most 2000 characters.
 5. Count the queue cap per service, or reserve part of the 32 for other services, so one service cannot block the company.
 6. Add a workflow that runs `pytest` on a push. Commit `web/package-lock.json` so the console install is pinned.
 7. Let a run search once more. Take the first findings and one word or code they contain, run that query, and then write the note. That is the change that makes the investigation look like an investigation.

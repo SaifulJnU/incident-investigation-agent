@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
@@ -16,6 +16,7 @@ from incident_investigation_agent.api.schemas import (
     IncidentCreate,
     IncidentDetail,
     IncidentOut,
+    IncidentPage,
     IncidentPatch,
     RunOut,
     Status,
@@ -24,6 +25,7 @@ from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.db.models import utcnow
 from incident_investigation_agent.domain.access import Principal
 from incident_investigation_agent.repositories.cases import (
+    CASE_PAGE_SIZE,
     active_run,
     add_evidence,
     evidence_for,
@@ -42,13 +44,35 @@ router = APIRouter()
 log = logging.getLogger("incident_investigation_agent.api")
 
 
-@router.get("/api/incidents", response_model=list[IncidentOut])
+@router.get("/api/incidents", response_model=IncidentPage)
 def incidents(
     status: Status | None = None,
+    before: datetime | None = None,
+    before_id: uuid.UUID | None = None,
     session: Session = Depends(get_db),
     principal: Principal = Depends(get_principal),
-) -> list:
-    return list_incidents(session, principal.list_scope(), status=status)
+):
+    if (before is None) != (before_id is None):
+        raise HTTPException(
+            status_code=422,
+            detail="The next page needs both a start time and a case id.",
+        )
+    if before is not None and before.tzinfo is None:
+        before = before.replace(tzinfo=timezone.utc)
+    cases, more = list_incidents(
+        session,
+        principal.list_scope(),
+        status=status,
+        before=before,
+        before_id=before_id,
+        limit=CASE_PAGE_SIZE,
+    )
+    last = cases[-1] if more and cases else None
+    return {
+        "cases": cases,
+        "next_before": last.started_at if last is not None else None,
+        "next_before_id": last.id if last is not None else None,
+    }
 
 
 @router.get("/api/incidents/counts")

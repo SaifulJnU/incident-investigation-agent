@@ -488,6 +488,11 @@ button:disabled {
   border-bottom: 0;
 }
 
+.older {
+  padding: 0.7rem 1rem 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
 .case-row:hover {
   background: #eef4f8;
 }
