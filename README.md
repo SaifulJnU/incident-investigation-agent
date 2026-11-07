@@ -10,7 +10,7 @@ The alert system still pages. This service writes the investigation. The numbers
 
 1. An engineer opens a case for one service and clicks Investigate.
 2. The API checks the token and the service grant. No token is 401. A service outside the grant is 403. Another service's case is 404.
-3. A case that is resolved, or already has a run in progress, is refused with 409. A queue that already holds 32 waiting runs, unless `MAX_QUEUED_RUNS` says otherwise, is refused with 429.
+3. A case that is resolved, or already has a run in progress, is refused with 409. A service that already has 32 waiting runs, unless `MAX_QUEUED_RUNS` says otherwise, is refused with 429. Another service can still queue.
 4. A clear case is queued. The API returns 202. It does not call the model.
 5. A worker, outside that request, claims up to four queued runs with `FOR UPDATE SKIP LOCKED`.
 6. It builds a brief from the case and searches the systems this company has enabled. The queries are `timeout`, `timed out`, and `500`, plus a version, a status code, and a few words from the brief. The searches run together, and they are read-only. The model does not choose them.

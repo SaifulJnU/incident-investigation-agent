@@ -78,11 +78,11 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 - The case list returns at most 50 cases, newest start time first. When more exist, the response names the start time and id of the last case. The next request passes those as `before` and `before_id`. Counts on the filters still cover every case in the grant.
 - Only a person moves a case to mitigated or resolved.
 - Investigate is refused when a run is already queued or running, and when the case is resolved.
-- Investigate is refused with 429 when the number of queued runs is already `MAX_QUEUED_RUNS` (32 unless the environment says otherwise). A running or finished run does not count.
+- Investigate is refused with 429 when that service already has `MAX_QUEUED_RUNS` queued runs (32 unless the environment says otherwise). Another service can still queue. A running or finished run does not count.
 
 ### 6.2 Investigation
 
-- Investigate stores a run and returns without waiting for the model. The waiting list holds at most `MAX_QUEUED_RUNS` runs.
+- Investigate stores a run and returns without waiting for the model. Each service's waiting list holds at most `MAX_QUEUED_RUNS` runs.
 - The worker sends the model the title, service, severity, start time, description, and evidence already on the case.
 - Before that call, the worker searches every enabled connector for `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three other words from the brief. GitHub is asked for recent commits once, not once per word.
 - The worker stores each matching line as evidence, at most 2000 characters. The model does not choose the searches and does not call tools.

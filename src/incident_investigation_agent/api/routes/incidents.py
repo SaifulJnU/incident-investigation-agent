@@ -178,7 +178,7 @@ def investigate(
             detail="An investigation is already running for this case.",
         )
     settings: Settings = request.app.state.settings
-    waiting = queued_run_count(session)
+    waiting = queued_run_count(session, incident.service)
     if waiting >= settings.max_queued_runs:
         log.info(
             "investigation refused case=%s service=%s reason=queue_full queued=%s",
@@ -188,7 +188,10 @@ def investigate(
         )
         raise HTTPException(
             status_code=429,
-            detail="The investigation queue is full. Wait for a run to start, then try again.",
+            detail=(
+                "The investigation queue for this service is full. "
+                "Wait for a run to start, then try again."
+            ),
         )
     model_name = (
         settings.ollama_model

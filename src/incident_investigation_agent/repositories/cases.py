@@ -124,8 +124,8 @@ def runs_for(session: Session, incident_id: uuid.UUID) -> list[InvestigationRun]
     )
 
 
-def queued_run_count(session: Session) -> int:
-    """How many runs are waiting. On Postgres, the count waits out any insert still in flight."""
+def queued_run_count(session: Session, service: str) -> int:
+    """How many runs are waiting for this service. On Postgres, the count waits out any insert still in flight."""
     bind = session.get_bind()
     if bind.dialect.name == "postgresql":
         session.execute(
@@ -135,7 +135,11 @@ def queued_run_count(session: Session) -> int:
     value = session.scalar(
         select(func.count())
         .select_from(InvestigationRun)
-        .where(InvestigationRun.status == "queued")
+        .join(Incident, Incident.id == InvestigationRun.incident_id)
+        .where(
+            InvestigationRun.status == "queued",
+            Incident.service == service,
+        )
     )
     return int(value or 0)
 

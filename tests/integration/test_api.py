@@ -199,7 +199,8 @@ def test_a_full_queue_refuses_another_investigate():
         refused = client.post(f"/api/incidents/{second}/investigate", headers=headers)
         assert refused.status_code == 429
         assert refused.json()["detail"] == (
-            "The investigation queue is full. Wait for a run to start, then try again."
+            "The investigation queue for this service is full. "
+            "Wait for a run to start, then try again."
         )
         same_case = client.post(f"/api/incidents/{first}/investigate", headers=headers)
         assert same_case.status_code == 409
@@ -212,6 +213,39 @@ def test_a_full_queue_refuses_another_investigate():
 
         started = client.post(f"/api/incidents/{second}/investigate", headers=headers)
         assert started.status_code == 202
+
+
+def test_a_full_service_queue_does_not_block_another_service():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    app = create_app(factory, settings=replace(_settings(), max_queued_runs=1))
+    with TestClient(app) as client:
+        headers = _auth(client, "oncall", "oncall-password")
+        checkout = _open_case(client, headers, "Checkout errors")
+        queued = client.post(f"/api/incidents/{checkout}/investigate", headers=headers)
+        assert queued.status_code == 202
+
+        payments = client.post(
+            "/api/incidents",
+            headers=headers,
+            json={
+                "title": "Payments timeout",
+                "service": "payments-api",
+                "severity": "sev2",
+                "summary": "The vault timed out.",
+            },
+        )
+        assert payments.status_code == 201
+        other = client.post(
+            f"/api/incidents/{payments.json()['id']}/investigate",
+            headers=headers,
+        )
+        assert other.status_code == 202
 
 
 def test_on_call_cannot_open_or_read_another_service(client):
