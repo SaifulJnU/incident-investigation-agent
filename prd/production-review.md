@@ -17,7 +17,7 @@ It is not yet a service a company should page on. The record, the queue, and the
 | Access | Strong for one company | 401 without a token, 403 for a service outside the grant, 404 for another service's case, dev login refused when `APP_ENV=prod` |
 | Queue | Right shape, small ceiling | `FOR UPDATE SKIP LOCKED`, a cap of 32 waiting runs per service, a 15-second connector timeout, a 20-minute run timeout |
 | Investigation | The weak part | The console does not let the model search. A word list does |
-| Operate it | Thin | Live, ready, and a worker heartbeat exist. The case list returns one page. There is no CI workflow and no metrics |
+| Operate it | Thin | Live, ready, and a worker heartbeat exist. The case list returns one page. A push runs pytest. There are no metrics |
 | Scale | One company, a quiet hour | A second worker can run. A busy hour of investigations will queue, then return 429 |
 
 ## What already holds
@@ -64,9 +64,9 @@ The file header calls it a local production shape. It publishes Postgres on port
 
 `deploy/api.Dockerfile` starts uvicorn and runs `alembic upgrade head` beside it. `/api/ready` stays 503 until `incidents` can be read, which is the right probe. `prd/schema-design.md` says the image migrates before it serves. An operator who trusts the note will misread a 503 during startup.
 
-### Nothing runs the suite on a push
+### The suite runs on a push
 
-`pytest` from the project virtualenv passed, 83 tests, on 31 October 2026. The repository has no GitHub Actions workflow, so `main` does not run that suite. Python dependencies are version ranges. `web/package-lock.json` is still untracked, so the console install is not pinned.
+`.github/workflows/tests.yml` runs `pytest` on every push and pull request, on Python 3.12. `web/package-lock.json` pins the console install. Python dependencies are still version ranges.
 
 ### The search cannot ask a second question
 
@@ -114,7 +114,7 @@ Each one is small enough to review, and each one is visible to a person using th
 3. Done. Each worker process writes its own heartbeat row and deletes only that row on stop.
 4. Done. The case list returns 50 cases at a time, and a stored finding keeps at most 2000 characters.
 5. Done. The queue cap is counted per service, so one service cannot fill the waiting list for the company.
-6. Add a workflow that runs `pytest` on a push. Commit `web/package-lock.json` so the console install is pinned.
+6. Done. A workflow runs `pytest` on a push, and `web/package-lock.json` pins the console install.
 7. Let a run search once more. Take the first findings and one word or code they contain, run that query, and then write the note. That is the change that makes the investigation look like an investigation.
 8. After step 7, add an MCP connector behind the allowlist above. Not before.
 
