@@ -16,6 +16,7 @@ from incident_investigation_agent.infrastructure.connectors import (
     github,
     local_logs,
     loki,
+    mcp,
 )
 
 log = logging.getLogger("incident_investigation_agent.gather")
@@ -113,6 +114,9 @@ _STATUS = (
     "cloudwatch search failed",
     "datadog search failed",
     "loki search failed",
+    "mcp search failed",
+    "mcp returned no ",
+    "was not called",
     "commit list failed",
     "invalid service",
     "github returned no ",
@@ -310,6 +314,7 @@ def _jobs(
         "cloudwatch": ("search_cloudwatch", cloudwatch.search_cloudwatch_logs),
         "datadog": ("search_datadog", datadog.search_datadog_logs),
         "loki": ("search_loki", loki.search_loki_logs),
+        "mcp": ("search_mcp", mcp.search_mcp),
     }
     for name in names:
         if name == "github":
@@ -388,6 +393,7 @@ def _timeout_text(label: str, timeout: float) -> str:
         "search_cloudwatch": "CloudWatch search failed",
         "search_datadog": "Datadog search failed",
         "search_loki": "Loki search failed",
+        "search_mcp": "MCP search failed",
         "list_recent_commits": "Commit list failed",
     }.get(label, "Search failed")
     seconds = int(timeout) if float(timeout).is_integer() else timeout

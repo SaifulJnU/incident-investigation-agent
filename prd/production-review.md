@@ -95,15 +95,13 @@ MCP is a way to call tools that already exist: GitHub, Datadog, AWS, an internal
 
 An MCP server attached only to the note model would not run during a search. Gather calls Python functions. An MCP connector has to be one of those functions.
 
-Use MCP later, as one more connector, with these limits:
+`mcp` is that connector. It stays off until `CONNECTORS` includes it. Gather calls `search_mcp`, which talks to `MCP_URL` and keeps the text. The limits are:
 
-- Read-only tools only. The worker still must not commit, push, restart, or roll back.
-- An allowlist of tool names in configuration. A company MCP server often also exposes write tools and shell tools.
-- The same service grant as the other connectors. A checkout case must not call a tool that reads payments.
-- The same 15-second timeout, and the same redaction before a failure is stored.
+- Read-only tools only. A tool name that means commit, push, restart, or roll back is not called.
+- `MCP_TOOLS` is the allowlist, written as `service=tool`. A tool that is not listed is not called.
+- A checkout case calls only the tool mapped to checkout. A tool whose name reads another service, such as payments, is not called.
+- The same 15-second timeout, and the same redaction before a failure or a quoted line is stored.
 - Results come back as text the note can quote. They are not written back to the other system.
-
-Until the console path can call a tool by name, a new system is still a short Python connector. That is smaller than an MCP client, and it matches the code that actually runs.
 
 ## Changes worth making, in order
 
@@ -116,6 +114,6 @@ Each one is small enough to review, and each one is visible to a person using th
 5. Done. The queue cap is counted per service, so one service cannot fill the waiting list for the company.
 6. Done. A workflow runs `pytest` on a push, and `web/package-lock.json` pins the console install.
 7. Done. A run searches once more, using one word or code from the first findings, and then writes the note.
-8. After step 7, add an MCP connector behind the allowlist above. Not before.
+8. Done. An MCP connector calls one allowlisted read-only tool for the case service. A checkout case cannot call a payments tool.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.

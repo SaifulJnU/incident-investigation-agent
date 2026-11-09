@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # local_logs reads LOG_DIR. The others read company systems when APP_ENV=prod.
-KNOWN_CONNECTORS = ("local_logs", "cloudwatch", "datadog", "loki", "github")
+KNOWN_CONNECTORS = ("local_logs", "cloudwatch", "datadog", "loki", "github", "mcp")
 PRODUCTION_CONNECTORS = ("cloudwatch", "datadog", "loki", "github")
 
 
@@ -133,6 +133,9 @@ class Settings:
     github_org: str = ""
     github_repos: str = ""
     github_lookback_hours: int = 24
+    mcp_url: str = ""
+    mcp_token: str = ""
+    mcp_tools: str = ""
     connector_timeout_seconds: int = 15
     run_timeout_minutes: int = 20
     max_queued_runs: int = 32
@@ -219,6 +222,9 @@ class Settings:
             github_org=_env("GITHUB_ORG", ""),
             github_repos=_env("GITHUB_REPOS", ""),
             github_lookback_hours=_int_env("GITHUB_LOOKBACK_HOURS", 24, 1, 168),
+            mcp_url=_env("MCP_URL", "").rstrip("/"),
+            mcp_token=_env("MCP_TOKEN", ""),
+            mcp_tools=_env("MCP_TOOLS", ""),
             connector_timeout_seconds=_int_env("CONNECTOR_TIMEOUT_SECONDS", 15, 1, 60),
             run_timeout_minutes=_int_env("RUN_TIMEOUT_MINUTES", 20, 1, 240),
             max_queued_runs=_int_env("MAX_QUEUED_RUNS", 32, 1, 500),

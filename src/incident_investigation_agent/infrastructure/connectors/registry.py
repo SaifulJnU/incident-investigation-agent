@@ -9,6 +9,7 @@ from incident_investigation_agent.infrastructure.connectors import (
     github,
     local_logs,
     loki,
+    mcp,
 )
 
 _FACTORIES = {
@@ -17,6 +18,7 @@ _FACTORIES = {
     "datadog": datadog.tools_for,
     "loki": loki.tools_for,
     "github": github.tools_for,
+    "mcp": mcp.tools_for,
 }
 
 

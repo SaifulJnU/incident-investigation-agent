@@ -49,6 +49,7 @@ def configured_secrets(settings: Settings) -> tuple[str, ...]:
         settings.datadog_app_key,
         settings.loki_token,
         settings.github_token,
+        settings.mcp_token,
         settings.dev_auth_secret,
     ]
     values.extend(user.password for user in settings.dev_users)

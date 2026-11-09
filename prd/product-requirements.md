@@ -41,7 +41,7 @@ This is the slice that runs.
 - Postgres stores cases, evidence, and investigation runs, including who opened the case and who requested the run.
 - The worker searches the connectors selected by `APP_ENV` and `CONNECTORS`. It stores each matching line itself. The model does not call tools.
 - `APP_ENV=local` searches `LOG_DIR/<service>`. In Docker the checkout sample is `examples/logs/checkout-api`.
-- `APP_ENV=prod` searches CloudWatch, Datadog, Loki, and GitHub. `CONNECTORS` can name a shorter list.
+- `APP_ENV=prod` searches CloudWatch, Datadog, Loki, and GitHub. `CONNECTORS` can name a shorter list. `mcp` is included only when that list names it.
 - Model plug with two options: Ollama (local compose) and Amazon Bedrock (when `MODEL_PROVIDER=bedrock` and AWS credentials exist).
 - CLI that investigates a prompt and writes `.case/case.json`, separate from the console database.
 
@@ -51,7 +51,7 @@ Built for logs and GitHub commits. Slack and PagerDuty intake are still later. T
 
 A tool plugin:
 
-- Has a name a company can enable or disable (`local_logs`, `cloudwatch`, `datadog`, `github`, `grafana`).
+- Has a name a company can enable or disable (`local_logs`, `cloudwatch`, `datadog`, `loki`, `github`, `mcp`).
 - Exposes a search function the worker calls. A Strands tool wrapper may sit on that same function. Investigate does not ask the model to call it.
 - Is read-only in the first version of that plugin.
 - Returns text the note can quote. It does not write back to the external system.

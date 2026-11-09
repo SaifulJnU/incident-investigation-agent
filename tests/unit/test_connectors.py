@@ -12,6 +12,7 @@ from incident_investigation_agent.infrastructure.connectors.github import list_c
 from incident_investigation_agent.infrastructure.connectors.http import ConnectorError, request_json
 from incident_investigation_agent.infrastructure.connectors.loki import search_loki_logs
 from incident_investigation_agent.infrastructure.connectors.local_logs import search_local_logs
+from incident_investigation_agent.infrastructure.connectors.mcp import search_mcp
 from incident_investigation_agent.infrastructure.connectors.registry import connector_tools
 
 
@@ -236,3 +237,61 @@ def test_http_error_redacts_a_token_that_was_not_a_header(monkeypatch):
         request_json("https://api.example.com/logs", headers={"Accept": "application/json"})
     assert token not in str(caught.value)
     assert "Bearer [redacted]" in str(caught.value)
+
+
+def test_mcp_calls_only_the_tool_mapped_to_this_service(monkeypatch):
+    calls = []
+
+    def fake(url, payload, headers, timeout, secrets):
+        calls.append((payload, headers))
+        if payload.get("method") == "tools/call":
+            return {
+                "result": {"content": [{"type": "text", "text": "vault timeout mcp-secret-token"}]}
+            }, "session-1"
+        return {"result": {}}, "session-1"
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.infrastructure.connectors.mcp._exchange",
+        fake,
+    )
+    settings = _settings(
+        app_env="prod",
+        mcp_url="https://mcp.example.com/rpc",
+        mcp_token="mcp-secret-token",
+        mcp_tools="checkout-api=search_checkout,payments-api=search_payments",
+    )
+    result = search_mcp(settings, "checkout-api", "timeout", 5)
+    tool_calls = [payload for payload, _ in calls if payload.get("method") == "tools/call"]
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["params"]["name"] == "search_checkout"
+    assert tool_calls[0]["params"]["arguments"]["service"] == "checkout-api"
+    assert tool_calls[0]["params"]["arguments"]["query"] == "timeout"
+    sent = [headers for payload, headers in calls if payload.get("method") == "tools/call"][0]
+    assert sent["Mcp-Session-Id"] == "session-1"
+    assert "vault timeout" in result
+    assert "mcp-secret-token" not in result
+    assert "[redacted]" in result
+
+
+def test_mcp_does_not_call_a_tool_that_reads_another_service():
+    settings = _settings(
+        mcp_url="https://mcp.example.com",
+        mcp_tools="checkout-api=search_payments,payments-api=search_payments",
+    )
+    result = search_mcp(settings, "checkout-api", "timeout", 5)
+    assert result == "MCP tool search_payments reads another service, so it was not called."
+
+
+def test_mcp_does_not_call_a_write_tool():
+    settings = _settings(
+        mcp_url="https://mcp.example.com",
+        mcp_tools="checkout-api=push_deploy",
+    )
+    result = search_mcp(settings, "checkout-api", "timeout", 5)
+    assert result == "MCP tool push_deploy is not read-only, so it was not called."
+
+
+def test_mcp_names_a_missing_endpoint():
+    settings = _settings(mcp_tools="checkout-api=search_checkout")
+    result = search_mcp(settings, "checkout-api", "timeout", 5)
+    assert result == "MCP is not configured. Set MCP_URL to an https MCP endpoint."

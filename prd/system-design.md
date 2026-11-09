@@ -121,6 +121,7 @@ src/incident_investigation_agent/
     datadog.py                   APP_ENV=prod
     loki.py                      APP_ENV=prod
     github.py                    APP_ENV=prod
+    mcp.py                       optional, CONNECTORS includes mcp
     registry.py                  reads APP_ENV and CONNECTORS
 ```
 
@@ -132,7 +133,7 @@ tools_for(settings, service) -> list of Strands tools
 
 Investigate does not call `tools_for`. The search function is the path that runs.
 
-`APP_ENV=local` enables `local_logs`. `APP_ENV=prod` enables `cloudwatch`, `datadog`, `loki`, and `github`. `CONNECTORS=cloudwatch,github` replaces that default. An unknown name fails at startup with the list of known names. A connector whose setting is missing returns that missing name from the tool, and the case stays usable.
+`APP_ENV=local` enables `local_logs`. `APP_ENV=prod` enables `cloudwatch`, `datadog`, `loki`, and `github`. `CONNECTORS=cloudwatch,github` replaces that default. `mcp` is off until that list includes it. An unknown name fails at startup with the list of known names. A connector whose setting is missing returns that missing name from the tool, and the case stays usable.
 
 A call that is still running after `CONNECTOR_TIMEOUT_SECONDS` (15 by default) is recorded as unchecked for that source. CloudWatch, Datadog, Loki, and GitHub use the same limit on the socket. The other sources are kept, and the worker moves on to the note. The run does not stay in progress until `RUN_TIMEOUT_MINUTES`.
 

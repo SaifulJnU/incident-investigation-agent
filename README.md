@@ -35,7 +35,7 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 
 | Part | In this build |
 | --- | --- |
-| Search | 4 production systems (CloudWatch, Datadog, Loki, GitHub), or a local log folder |
+| Search | 4 production systems (CloudWatch, Datadog, Loki, GitHub), or a local log folder. MCP stays off until `CONNECTORS` includes it |
 | Model | Amazon Bedrock in production, Ollama locally. The console does not change |
 | Login | Company identity provider in production (OIDC, PKCE). The demo username and password start only when `APP_ENV=local`. Production refuses to start with `AUTH_MODE=dev` |
 | Access | No token is 401. A service the token does not grant is 403. Another service's case is 404 |
@@ -49,7 +49,7 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 | Probes | `/api/live` is 200 when the process is up. `/api/ready` is 503 while it waits on the database. `/api/health` reports the worker down only when every heartbeat is missing or stale |
 | Case list | 50 cases a page, newest start first. Older cases loads the next page. A stored finding is at most 2000 characters |
 | Case page | The incident note sits under the brief, with how long it took. Below that, one record lists status, evidence, and each note in time order |
-| Tests | 94 automated tests for access, connectors, the API, the worker, and the command line |
+| Tests | 98 automated tests for access, connectors, the API, the worker, and the command line |
 | Stack | Python, FastAPI, Postgres, Alembic, React |
 
 ## Run it
