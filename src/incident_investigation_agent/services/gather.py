@@ -152,13 +152,19 @@ class SearchBatch:
 
 def gather(settings: Settings, service: str | None, hint: str = "") -> SearchBatch:
     names = enabled_connectors(settings.app_env, settings.connectors)
-    jobs = _jobs(settings, service, names, _queries(hint, service))
+    queries = _queries(hint, service)
+    jobs = _jobs(settings, service, names, queries)
     if not jobs:
         batch = SearchBatch("No connectors are enabled.", ())
         _log_search(names, batch)
         return batch
-    blocks = _collect(jobs, settings.connector_timeout_seconds)
-    batch = _combine(blocks)
+    timeout = settings.connector_timeout_seconds
+    batch = _combine(_collect(jobs, timeout))
+    follow = _follow_query(batch.findings, queries, service)
+    if follow:
+        more = _jobs(settings, service, names, (follow,), include_github=False)
+        if more:
+            batch = _merge(batch, _combine(_collect(more, timeout)))
     _log_search(names, batch)
     return batch
 
@@ -215,6 +221,67 @@ def _queries(hint: str, service: str | None) -> tuple[str, ...]:
     return (*QUERIES, *versions, *codes, *extras)
 
 
+_FILE_PREFIX = re.compile(r"^[^\s:]+:\d+:\s+")
+
+
+def _follow_query(findings: tuple[Finding, ...], queries: tuple[str, ...], service: str | None) -> str | None:
+    """One status code, version, or word from the lines already found.
+
+    The first search does not know this token. A code or a version is used
+    before an ordinary word, because that is the sharper second question.
+    """
+    blocked = _blocked(queries, service)
+    texts = [_FILE_PREFIX.sub("", item.summary, count=1) for item in findings]
+    for text in texts:
+        for token in _STATUS_CODE.findall(text):
+            if token not in blocked:
+                return token
+    for text in texts:
+        for token in _VERSION.findall(text):
+            if token not in blocked:
+                return token
+    for text in texts:
+        for token in _WORD.findall(text):
+            word = _fold(token.lower())
+            if word in blocked or len(word) < 4:
+                continue
+            return word
+    return None
+
+
+def _blocked(queries: tuple[str, ...], service: str | None) -> set[str]:
+    blocked = set(_STOP)
+    blocked.update(query.lower() for query in queries)
+    for query in queries:
+        blocked.update(part.lower() for part in re.split(r"[^A-Za-z0-9]+", query) if part)
+    if service:
+        blocked.add(service.lower())
+        blocked.update(part.lower() for part in re.split(r"[^A-Za-z0-9]+", service) if part)
+    return blocked
+
+
+def _merge(first: SearchBatch, second: SearchBatch) -> SearchBatch:
+    seen = {item.summary for item in first.findings}
+    findings = list(first.findings)
+    for item in second.findings:
+        if item.summary in seen:
+            continue
+        seen.add(item.summary)
+        findings.append(item)
+    misses = list(first.misses)
+    for miss in second.misses:
+        if miss not in misses:
+            misses.append(miss)
+    unchecked = list(first.unchecked)
+    seen_unchecked = set(unchecked)
+    for line in second.unchecked:
+        if line not in seen_unchecked:
+            seen_unchecked.add(line)
+            unchecked.append(line)
+    text = first.text if not second.text else f"{first.text}\n{second.text}"
+    return SearchBatch(text, tuple(findings), tuple(misses), tuple(unchecked))
+
+
 def _fold(word: str) -> str:
     """Use the shorter form, so a case that says "deployed" still matches "deploy"."""
     for suffix in ("ing", "ed"):
@@ -230,7 +297,13 @@ class _Job:
     call: object
 
 
-def _jobs(settings: Settings, service: str | None, names: tuple[str, ...], queries: tuple[str, ...]):
+def _jobs(
+    settings: Settings,
+    service: str | None,
+    names: tuple[str, ...],
+    queries: tuple[str, ...],
+    include_github: bool = True,
+):
     jobs = []
     searchers = {
         "local_logs": ("search_logs", local_logs.search_local_logs),
@@ -240,7 +313,8 @@ def _jobs(settings: Settings, service: str | None, names: tuple[str, ...], queri
     }
     for name in names:
         if name == "github":
-            jobs.append(_Job("list_recent_commits", "", lambda: github.list_commits(settings, service)))
+            if include_github:
+                jobs.append(_Job("list_recent_commits", "", lambda: github.list_commits(settings, service)))
             continue
         label, function = searchers[name]
         for query in queries:

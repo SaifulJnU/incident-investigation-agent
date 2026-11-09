@@ -207,6 +207,34 @@ def test_a_long_matching_line_keeps_its_start():
     assert all(len(item) <= FINDING_TEXT_LIMIT for item in summaries)
 
 
+def test_one_word_from_the_first_lines_is_searched_before_the_note(tmp_path):
+    service = tmp_path / "checkout-api"
+    service.mkdir()
+    (service / "api.log").write_text(
+        "ERROR timeout from the certificate store\nINFO certificate expired\n",
+        encoding="utf-8",
+    )
+    settings = _settings(tmp_path, connectors=("local_logs",))
+    batch = gather(settings, "checkout-api")
+    assert "search_logs timeout:" in batch.text
+    assert "search_logs certificate:" in batch.text
+    assert any("certificate expired" in item.summary for item in batch.findings)
+
+
+def test_a_status_code_in_the_first_lines_is_the_follow_up(tmp_path):
+    service = tmp_path / "checkout-api"
+    service.mkdir()
+    (service / "api.log").write_text(
+        "ERROR timeout status=503\nINFO gateway returned 503 after the certificate check\n",
+        encoding="utf-8",
+    )
+    settings = _settings(tmp_path, connectors=("local_logs",))
+    batch = gather(settings, "checkout-api")
+    assert "search_logs 503:" in batch.text
+    assert "search_logs gateway:" not in batch.text
+    assert any("status=503" in item.summary for item in batch.findings)
+
+
 def test_note_prompt_leads_with_each_match_once():
     prompt = "Incident: Checkout\nSearches run before this note is written."
     batch = SearchBatch(

@@ -70,6 +70,8 @@ sequenceDiagram
   Worker->>DB: claim oldest queued run
   Worker->>Logs: timeout, timed out, 500, and a few words from the brief
   Logs-->>Worker: matching lines
+  Worker->>Logs: one word or code from those lines
+  Logs-->>Worker: any further lines
   Worker->>DB: store each matching line as evidence
   Worker->>Model: brief, matching lines, misses, and sources that were not checked
   Model-->>Worker: incident note
@@ -100,7 +102,7 @@ The worker removes that last line before the model call. The searches have alrea
 One function runs an investigation: `investigate_text`. The console worker and the command line both call it. It gathers, stores the lines, then asks `build_note_agent` for one reply. That agent has no tools.
 
 ```text
-case brief -----> gather -----> matching lines -----> note model -----> incident note
+case brief -----> gather -----> matching lines -----> one follow-up query -----> note model -----> incident note
 enabled connectors -----^
 ```
 

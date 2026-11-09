@@ -84,7 +84,7 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 
 - Investigate stores a run and returns without waiting for the model. Each service's waiting list holds at most `MAX_QUEUED_RUNS` runs.
 - The worker sends the model the title, service, severity, start time, description, and evidence already on the case.
-- Before that call, the worker searches every enabled connector for `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three other words from the brief. GitHub is asked for recent commits once, not once per word.
+- Before that call, the worker searches every enabled connector for `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three other words from the brief. It then searches once more for one status code, version, or word from the lines that came back. GitHub is asked for recent commits once, not again for that follow-up.
 - The worker stores each matching line as evidence, at most 2000 characters. The model does not choose the searches and does not call tools.
 - The worker stores the model's final text as the incident note.
 - The console shows the latest run: provider, model name, status, note, and error if the run failed.

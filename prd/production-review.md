@@ -38,7 +38,7 @@ These are worth keeping. Later work should sit on them.
 
 Both call `investigate_text`. That function runs `gather`, stores every matching line, then asks `build_note_agent` for one reply with no tools. The requirements, the system design, and the command line describe that path. The tool-calling prompt is gone.
 
-The investigation is still a fixed word list plus one model call. Closing the split did not make the search able to ask a second question. That remains the weak part, and it is item 7 below.
+The first search is still that fixed list. The run then searches once more, using one word or code from the lines that came back, and then writes the note.
 
 ### A timeout and a deploy write different errors
 
@@ -68,9 +68,9 @@ The file header calls it a local production shape. It publishes Postgres on port
 
 `.github/workflows/tests.yml` runs `pytest` on every push and pull request, on Python 3.12. `web/package-lock.json` pins the console install. Python dependencies are still version ranges.
 
-### The search cannot ask a second question
+### The search asks one follow-up question
 
-`gather` always searches `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three extra words from the brief. A case about saturation, a bad flag, or a certificate will not be searched for those words unless they survive that filter. The model writes the note from whatever came back. It cannot search again.
+`gather` searches `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three extra words from the brief. It then takes one status code, version, or word from the lines that came back, if that token was not already searched, and runs that query before the note is written. A code or a version is chosen before an ordinary word. GitHub is still asked once, not again for the follow-up.
 
 ## How far it scales
 
@@ -115,7 +115,7 @@ Each one is small enough to review, and each one is visible to a person using th
 4. Done. The case list returns 50 cases at a time, and a stored finding keeps at most 2000 characters.
 5. Done. The queue cap is counted per service, so one service cannot fill the waiting list for the company.
 6. Done. A workflow runs `pytest` on a push, and `web/package-lock.json` pins the console install.
-7. Let a run search once more. Take the first findings and one word or code they contain, run that query, and then write the note. That is the change that makes the investigation look like an investigation.
+7. Done. A run searches once more, using one word or code from the first findings, and then writes the note.
 8. After step 7, add an MCP connector behind the allowlist above. Not before.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.
