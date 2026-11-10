@@ -121,7 +121,7 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 - A company keeps case data in its own Postgres. There is no shared multi-tenant service in this repository.
 - Secrets (Datadog keys, GitHub tokens, AWS keys) come from the environment or the platform's secret store. They are not written into the case.
 - Local Docker must not inherit a host `MODEL_PROVIDER=bedrock` or `APP_ENV=prod` by accident. The compose file sets Ollama and `APP_ENV=local`.
-- The compose database password is for the local stack only. Production replaces `DATABASE_URL`.
+- The compose file is the laptop stack. Its published ports bind to 127.0.0.1. The password `investigator` and the Docker socket mounted for Floci stay on that machine. Production replaces `DATABASE_URL` and does not use this file.
 - An investigation that cannot authenticate to a plugin fails that run with the underlying error. It does not invent a cause.
 - `/api/live` returns 200 when the API process is up. It does not check the database. `/api/ready` returns 503 until the case schema can be read. A process waiting on the database is not the same as a process that is down. `/api/health` reports the database, and the worker as up when any heartbeat is fresh.
 - `/api/metrics` counts queued runs, running runs, and runs that finished in the last hour, plus how long the oldest queued run has been waiting. It does not include a title, a note, or evidence. It returns 503 until the schema can be read, so a down database does not look like an empty queue.

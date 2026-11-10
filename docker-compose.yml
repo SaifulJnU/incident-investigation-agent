@@ -1,12 +1,17 @@
-# Local production shape. The database password is for this compose file only.
-# In production, set DATABASE_URL from a secret and point MODEL_PROVIDER at bedrock.
+# Laptop only. Do not copy this file onto a host other people can reach.
+# Published ports bind to 127.0.0.1. The database password is "investigator"
+# and is for this machine. Floci mounts the Docker socket so it can stand in
+# for CloudWatch. That socket is why this file is not a deploy.
+# Production uses the same images with APP_ENV=prod, MODEL_PROVIDER=bedrock,
+# and a DATABASE_URL from a secret. It does not use this file.
 
 services:
   floci:
     image: floci/floci:latest
     ports:
-      - "4566:4566"
+      - "127.0.0.1:4566:4566"
     volumes:
+      # The socket lets Floci run the local CloudWatch stand-in. Leave this file on the laptop.
       - /var/run/docker.sock:/var/run/docker.sock
       - floci-data:/app/data
     environment:
@@ -20,8 +25,9 @@ services:
       POSTGRES_USER: investigator
       POSTGRES_PASSWORD: investigator
       POSTGRES_DB: investigations
+    # Localhost only. Other containers reach this database as postgres:5432.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -57,7 +63,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,7 +111,7 @@ services:
     volumes:
       - ./src:/src
     ports:
-      - "8090:8090"
+      - "127.0.0.1:8090:8090"
     depends_on:
       floci:
         condition: service_started
@@ -115,7 +121,7 @@ services:
       context: .
       dockerfile: deploy/web.Dockerfile
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       api:
         condition: service_healthy

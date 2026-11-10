@@ -56,9 +56,9 @@ The first search is still that fixed list. The run then searches once more, usin
 
 `MAX_QUEUED_RUNS` counts waiting runs for the case's service. Checkout can fill its own 32. Payments can still queue. A running or finished run does not count. A script clicking Investigate on one service cannot block the rest of the company.
 
-### The local compose file is easy to mistake for a deploy
+### The compose file stays on the laptop
 
-The file header calls it a local production shape. It publishes Postgres on port 5432 with the password `investigator`, and it mounts the Docker socket into Floci. That is acceptable on a laptop. It is a serious mistake if the file is copied to a host that other people can reach.
+`docker-compose.yml` says it is the laptop stack. Postgres, the API, the console, Floci, and the checkout sample publish on 127.0.0.1 only. The password is still `investigator`, and Floci still mounts the Docker socket so it can stand in for CloudWatch. Those two facts are why the file is not a deploy. A company runs the same images with its own `DATABASE_URL`.
 
 ### Migrations and the design note disagree
 
@@ -116,5 +116,6 @@ Each one is small enough to review, and each one is visible to a person using th
 7. Done. A run searches once more, using one word or code from the first findings, and then writes the note.
 8. Done. An MCP connector calls one allowlisted read-only tool for the case service. A checkout case cannot call a payments tool.
 9. Done. `/api/metrics` reports how many runs are queued, running, completed, or failed in the last hour, and how long the oldest queued run has waited. A down database stays 503 instead of an empty queue.
+10. Done. The compose file publishes on localhost only and says it is not a deploy. The Docker socket stays, because Floci needs it, and the file says so.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.

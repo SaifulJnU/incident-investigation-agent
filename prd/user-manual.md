@@ -103,7 +103,7 @@ The tests cover settings, the case file, log search, the API, and the worker's s
 
 ## Deploy for a company
 
-Use the same API image and web image. Do not publish the compose password or the compose Postgres.
+Use the same API image and web image. Do not copy `docker-compose.yml` onto that host. The compose file binds Postgres to localhost and mounts the Docker socket for Floci. Production sets `DATABASE_URL` from a secret.
 
 Set at least:
 

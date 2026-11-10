@@ -170,11 +170,12 @@ External systems are not copied into Postgres wholesale. A connector returns the
 Local, one company, one laptop:
 
 ```text
-docker compose
-  postgres
-  api + worker   MODEL_PROVIDER=ollama
-                 OLLAMA_HOST=http://host.docker.internal:11434
-  web            http://localhost:8080
+docker compose     laptop file only, ports on 127.0.0.1
+  postgres         password investigator, not a production database
+  api + worker     MODEL_PROVIDER=ollama
+                   OLLAMA_HOST=http://host.docker.internal:11434
+  web              http://localhost:8080
+  floci            Docker socket, so it can stand in for CloudWatch
 Ollama on the host, any pulled tool-capable model
 ```
 
