@@ -17,7 +17,7 @@ It is not yet a service a company should page on. The record, the queue, and the
 | Access | Strong for one company | 401 without a token, 403 for a service outside the grant, 404 for another service's case, dev login refused when `APP_ENV=prod` |
 | Queue | Right shape, small ceiling | `FOR UPDATE SKIP LOCKED`, a cap of 32 waiting runs per service, a 15-second connector timeout, a 20-minute run timeout |
 | Investigation | The weak part | The console does not let the model search. A word list does |
-| Operate it | Thin | Live, ready, and a worker heartbeat exist. The case list returns one page. A push runs pytest. There are no metrics |
+| Operate it | Thin, with a queue snapshot | Live, ready, and a worker heartbeat exist. `/api/metrics` counts queued, running, and recently finished runs, and it includes no case text. There is still no metrics vendor. A push runs pytest |
 | Scale | One company, a quiet hour | A second worker can run. A busy hour of investigations will queue, then return 429 |
 
 ## What already holds
@@ -115,5 +115,6 @@ Each one is small enough to review, and each one is visible to a person using th
 6. Done. A workflow runs `pytest` on a push, and `web/package-lock.json` pins the console install.
 7. Done. A run searches once more, using one word or code from the first findings, and then writes the note.
 8. Done. An MCP connector calls one allowlisted read-only tool for the case service. A checkout case cannot call a payments tool.
+9. Done. `/api/metrics` reports how many runs are queued, running, completed, or failed in the last hour, and how long the oldest queued run has waited. A down database stays 503 instead of an empty queue.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.

@@ -124,6 +124,7 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 - The compose database password is for the local stack only. Production replaces `DATABASE_URL`.
 - An investigation that cannot authenticate to a plugin fails that run with the underlying error. It does not invent a cause.
 - `/api/live` returns 200 when the API process is up. It does not check the database. `/api/ready` returns 503 until the case schema can be read. A process waiting on the database is not the same as a process that is down. `/api/health` reports the database, and the worker as up when any heartbeat is fresh.
+- `/api/metrics` counts queued runs, running runs, and runs that finished in the last hour, plus how long the oldest queued run has been waiting. It does not include a title, a note, or evidence. It returns 503 until the schema can be read, so a down database does not look like an empty queue.
 - The console works in a current desktop browser and on a narrow laptop width.
 
 ## 8. Success for the next test pass

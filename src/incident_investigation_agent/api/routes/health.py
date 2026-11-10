@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from incident_investigation_agent.db.session import schema_ready
 from incident_investigation_agent.services.heartbeat import worker_alive
+from incident_investigation_agent.services.metrics import investigation_metrics
 
 router = APIRouter()
 
@@ -47,3 +48,19 @@ def health(request: Request) -> JSONResponse:
         "worker": "ok" if alive else "down",
     }
     return JSONResponse(status_code=200 if alive else 503, content=body)
+
+
+@router.get("/api/metrics")
+def metrics(request: Request) -> JSONResponse:
+    """Queue depth only. A database that is down must not look like an empty queue."""
+    factory = request.app.state.session_factory
+    if not schema_ready(factory):
+        body = {"status": "unavailable", "database": "down"}
+        return JSONResponse(status_code=503, content=body)
+    try:
+        with factory() as session:
+            body = investigation_metrics(session)
+    except Exception:
+        body = {"status": "unavailable", "database": "down"}
+        return JSONResponse(status_code=503, content=body)
+    return JSONResponse(status_code=200, content=body)

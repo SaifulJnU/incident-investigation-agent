@@ -191,7 +191,7 @@ web behind the company's HTTPS endpoint
 
 The console, API, worker, and schema stay the same. The company changes environment variables and which connector packages are enabled.
 
-`/api/live` returns 200 when the API process is serving. It does not open the database. `/api/ready` returns 503 until `incidents` can be read, including while migrations are still retrying. `/api/health` is the operator view: the database, and whether any worker heartbeat is fresh. Each process writes its own row, named from the host and the process id, and a stop deletes only that row. The container health check uses liveness, so a database that is still starting does not look like a dead process.
+`/api/live` returns 200 when the API process is serving. It does not open the database. `/api/ready` returns 503 until `incidents` can be read, including while migrations are still retrying. `/api/health` is the operator view: the database, and whether any worker heartbeat is fresh. Each process writes its own row, named from the host and the process id, and a stop deletes only that row. `/api/metrics` counts the queue and the runs that finished in the last hour. It returns no case text, and it stays 503 until the schema can be read. The container health check uses liveness, so a database that is still starting does not look like a dead process.
 
 ## What is intentionally not in the design yet
 

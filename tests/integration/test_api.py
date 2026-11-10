@@ -95,6 +95,33 @@ def test_a_process_waiting_on_the_database_is_still_alive():
         assert health.json() == {"status": "degraded", "database": "down", "worker": "unknown"}
 
 
+def test_metrics_names_an_empty_queue_without_a_token(client):
+    response = client.get("/api/metrics")
+    assert response.status_code == 200
+    assert response.json() == {
+        "queued": 0,
+        "running": 0,
+        "completed_last_hour": 0,
+        "failed_last_hour": 0,
+        "oldest_queued_seconds": None,
+    }
+
+
+def test_metrics_stays_unavailable_until_the_schema_can_be_read():
+    engine = create_engine(
+        "sqlite+pysqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    app = create_app(factory, settings=_settings())
+    with TestClient(app) as waiting:
+        response = waiting.get("/api/metrics")
+    assert response.status_code == 503
+    assert response.json() == {"status": "unavailable", "database": "down"}
+    assert "queued" not in response.json()
+
+
 def test_health_is_ok_when_the_worker_has_beaten(client):
     factory = client.app.state.session_factory
     with factory() as session:
