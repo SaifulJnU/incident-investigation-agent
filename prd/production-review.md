@@ -60,9 +60,9 @@ The first search is still that fixed list. The run then searches once more, usin
 
 `docker-compose.yml` says it is the laptop stack. Postgres, the API, the console, Floci, and the checkout sample publish on 127.0.0.1 only. The password is still `investigator`, and Floci still mounts the Docker socket so it can stand in for CloudWatch. Those two facts are why the file is not a deploy. A company runs the same images with its own `DATABASE_URL`.
 
-### Migrations and the design note disagree
+### The API listens while migrations retry
 
-`deploy/api.Dockerfile` starts uvicorn and runs `alembic upgrade head` beside it. `/api/ready` stays 503 until `incidents` can be read, which is the right probe. `prd/schema-design.md` says the image migrates before it serves. An operator who trusts the note will misread a 503 during startup.
+`deploy/api.Dockerfile` starts uvicorn and runs `alembic upgrade head` beside it. `/api/live` stays 200. `/api/ready` stays 503 until `incidents` can be read. The schema note and the user manual say the same thing. A 503 during startup means the schema cannot be read yet. The worker still waits until `investigation_runs` and `worker_beats` can be selected.
 
 ### The suite runs on a push
 
@@ -117,5 +117,6 @@ Each one is small enough to review, and each one is visible to a person using th
 8. Done. An MCP connector calls one allowlisted read-only tool for the case service. A checkout case cannot call a payments tool.
 9. Done. `/api/metrics` reports how many runs are queued, running, completed, or failed in the last hour, and how long the oldest queued run has waited. A down database stays 503 instead of an empty queue.
 10. Done. The compose file publishes on localhost only and says it is not a deploy. The Docker socket stays, because Floci needs it, and the file says so.
+11. Done. The schema note and the user manual say the API listens while migrations retry, so a 503 during startup is the schema, not a dead process.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.
