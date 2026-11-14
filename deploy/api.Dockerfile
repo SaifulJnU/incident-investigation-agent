@@ -7,12 +7,12 @@ WORKDIR /app
 
 RUN useradd --create-home --uid 10001 app
 
-COPY pyproject.toml README.md alembic.ini ./
+COPY requirements.txt pyproject.toml README.md alembic.ini ./
 COPY src ./src
 COPY alembic ./alembic
 COPY examples ./examples
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir --no-deps .
 
 USER app
 

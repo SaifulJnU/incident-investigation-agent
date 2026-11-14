@@ -83,9 +83,12 @@ This path does not write to Postgres. It runs the same search and the same note 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+pip install -r requirements-dev.txt
+pip install --no-deps -e .
 copy .env.example .env
 ```
+
+`requirements-dev.txt` pins the libraries. The API image installs `requirements.txt`, the same list without the test libraries.
 
 Set `MODEL_PROVIDER=ollama` in `.env`, then:
 

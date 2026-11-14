@@ -49,7 +49,7 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 | Probes | `/api/live` is 200 when the process is up. `/api/ready` is 503 while it waits on the database. `/api/health` reports the worker down only when every heartbeat is missing or stale. `/api/metrics` counts the queue and does not include case text |
 | Case list | 50 cases a page, newest start first. Older cases loads the next page. A stored finding is at most 2000 characters |
 | Case page | The incident note sits under the brief, with how long it took. Below that, one record lists status, evidence, and each note in time order |
-| Tests | 104 automated tests for access, connectors, the API, the worker, and the command line |
+| Tests | 105 automated tests for access, connectors, the API, the worker, and the command line |
 | Stack | Python, FastAPI, Postgres, Alembic, React |
 
 ## Run it

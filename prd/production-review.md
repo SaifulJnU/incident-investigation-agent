@@ -66,7 +66,7 @@ The first search is still that fixed list. The run then searches once more, usin
 
 ### The suite runs on a push
 
-`.github/workflows/tests.yml` runs `pytest` on every push and pull request, on Python 3.12. `web/package-lock.json` pins the console install. Python dependencies are still version ranges.
+`.github/workflows/tests.yml` runs `pytest` on every push and pull request, on Python 3.12. `web/package-lock.json` pins the console install. `requirements.txt` pins the API image. `requirements-dev.txt` pins that same tree plus pytest, and the workflow installs from it.
 
 ### The search asks one follow-up question
 
@@ -118,5 +118,6 @@ Each one is small enough to review, and each one is visible to a person using th
 9. Done. `/api/metrics` reports how many runs are queued, running, completed, or failed in the last hour, and how long the oldest queued run has waited. A down database stays 503 instead of an empty queue.
 10. Done. The compose file publishes on localhost only and says it is not a deploy. The Docker socket stays, because Floci needs it, and the file says so.
 11. Done. The schema note and the user manual say the API listens while migrations retry, so a 503 during startup is the schema, not a dead process.
+12. Done. Python dependencies are pinned. The workflow and the API image install from that lock, so a push does not float the libraries under the tests.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.
