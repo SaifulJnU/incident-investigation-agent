@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from incident_investigation_agent.db.models import Base, Incident, InvestigationRun
-from incident_investigation_agent.services.metrics import investigation_metrics
+from incident_investigation_agent.services.metrics import investigation_metrics, prometheus_text
 
 
 def _factory():
@@ -70,6 +70,33 @@ def test_metrics_counts_the_queue_and_the_last_hour():
         "oldest_queued_seconds": 90,
     }
     assert "Checkout" not in str(body)
+
+
+def test_prometheus_text_repeats_the_counts_and_skips_an_empty_age():
+    text = prometheus_text(
+        {
+            "queued": 1,
+            "running": 1,
+            "completed_last_hour": 1,
+            "failed_last_hour": 1,
+            "oldest_queued_seconds": 90,
+        }
+    )
+    assert "case_file_runs_queued 1\n" in text
+    assert "case_file_oldest_queued_seconds 90\n" in text
+    assert "Checkout" not in text
+
+    empty = prometheus_text(
+        {
+            "queued": 0,
+            "running": 0,
+            "completed_last_hour": 0,
+            "failed_last_hour": 0,
+            "oldest_queued_seconds": None,
+        }
+    )
+    assert "case_file_runs_queued 0\n" in empty
+    assert "oldest_queued" not in empty
 
 
 def test_an_empty_queue_has_no_oldest_age():

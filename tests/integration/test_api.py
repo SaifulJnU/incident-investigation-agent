@@ -107,6 +107,15 @@ def test_metrics_names_an_empty_queue_without_a_token(client):
     }
 
 
+def test_metrics_scrape_repeats_the_queue_without_a_token(client):
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain; version=0.0.4")
+    assert "case_file_runs_queued 0\n" in response.text
+    assert "oldest_queued" not in response.text
+    assert response.headers["x-request-id"]
+
+
 def test_metrics_stays_unavailable_until_the_schema_can_be_read():
     engine = create_engine(
         "sqlite+pysqlite://",
@@ -117,9 +126,12 @@ def test_metrics_stays_unavailable_until_the_schema_can_be_read():
     app = create_app(factory, settings=_settings())
     with TestClient(app) as waiting:
         response = waiting.get("/api/metrics")
+        scrape = waiting.get("/metrics")
     assert response.status_code == 503
     assert response.json() == {"status": "unavailable", "database": "down"}
     assert "queued" not in response.json()
+    assert scrape.status_code == 503
+    assert "case_file_runs_queued" not in scrape.text
 
 
 def test_health_is_ok_when_the_worker_has_beaten(client):

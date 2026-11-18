@@ -12,6 +12,43 @@ from incident_investigation_agent.db.models import InvestigationRun, utcnow
 WINDOW = timedelta(hours=1)
 
 
+_GAUGES = (
+    ("queued", "case_file_runs_queued", "Runs waiting to be claimed."),
+    ("running", "case_file_runs_running", "Runs a worker has claimed."),
+    (
+        "completed_last_hour",
+        "case_file_runs_completed_last_hour",
+        "Runs that completed in the last hour.",
+    ),
+    (
+        "failed_last_hour",
+        "case_file_runs_failed_last_hour",
+        "Runs that failed in the last hour.",
+    ),
+)
+
+
+def prometheus_text(body: dict) -> str:
+    """The same counts as Prometheus text. No title, note, or service name.
+
+    An empty queue omits the age gauge. A missing age is not zero seconds.
+    """
+    lines: list[str] = []
+    for key, name, help_text in _GAUGES:
+        lines.append(f"# HELP {name} {help_text}")
+        lines.append(f"# TYPE {name} gauge")
+        lines.append(f"{name} {int(body[key])}")
+    age = body["oldest_queued_seconds"]
+    if age is not None:
+        lines.append(
+            "# HELP case_file_oldest_queued_seconds "
+            "Seconds the oldest waiting run has been queued."
+        )
+        lines.append("# TYPE case_file_oldest_queued_seconds gauge")
+        lines.append(f"case_file_oldest_queued_seconds {int(age)}")
+    return "\n".join(lines) + "\n"
+
+
 def investigation_metrics(session: Session, *, now: datetime | None = None) -> dict:
     """Queue depth and how many runs finished in the last hour.
 

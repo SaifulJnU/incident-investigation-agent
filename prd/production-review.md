@@ -1,7 +1,7 @@
 # Production review
 
 Date: 31 October 2026  
-Scope: the code on `main`, the design notes in `prd/`, and a local run of the suite (83 passed).
+Scope: the code on `main`, the design notes in `prd/`, and a local run of the suite.
 
 This is a working record for the next changes. It is not a launch checklist.
 
@@ -17,7 +17,7 @@ It is not yet a service a company should page on. The record, the queue, and the
 | Access | Strong for one company | 401 without a token, 403 for a service outside the grant, 404 for another service's case, dev login refused when `APP_ENV=prod` |
 | Queue | Right shape, small ceiling | `FOR UPDATE SKIP LOCKED`, a cap of 32 waiting runs per service, a 15-second connector timeout, a 20-minute run timeout |
 | Investigation | The weak part | The console does not let the model search. A word list does |
-| Operate it | Thin, with a queue snapshot | Live, ready, and a worker heartbeat exist. `/api/metrics` counts queued, running, and recently finished runs, and it includes no case text. There is still no metrics vendor. A push runs pytest |
+| Operate it | Thin, with a queue snapshot | Live, ready, and a worker heartbeat exist. `/api/metrics` counts queued, running, and recently finished runs, and it includes no case text. `/metrics` repeats those counts as Prometheus text for a scraper the company already runs. The API does not push them. A push runs pytest |
 | Scale | One company, a quiet hour | A second worker can run. A busy hour of investigations will queue, then return 429 |
 
 ## What already holds
@@ -119,5 +119,6 @@ Each one is small enough to review, and each one is visible to a person using th
 10. Done. The compose file publishes on localhost only and says it is not a deploy. The Docker socket stays, because Floci needs it, and the file says so.
 11. Done. The schema note and the user manual say the API listens while migrations retry, so a 503 during startup is the schema, not a dead process.
 12. Done. Python dependencies are pinned. The workflow and the API image install from that lock, so a push does not float the libraries under the tests.
+13. Done. `/metrics` repeats the queue counts as Prometheus text. A company scrapes that path with the agent it already runs. The API does not push those counts. A down database stays 503, and the text includes no case title or note. The console proxy forwards `/metrics` to the API.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.

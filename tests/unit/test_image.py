@@ -3,6 +3,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_console_proxies_the_metrics_scrape():
+    text = (ROOT / "deploy" / "nginx.conf").read_text(encoding="utf-8")
+    assert "location = /metrics" in text
+    assert "proxy_pass http://$api_upstream;" in text
+
+
 def test_api_image_serves_while_migrations_retry():
     dockerfile = (ROOT / "deploy" / "api.Dockerfile").read_text(encoding="utf-8")
     command = dockerfile.splitlines()[-1]

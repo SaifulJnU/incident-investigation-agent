@@ -8,11 +8,13 @@ up and waiting on the database fails readiness and still passes liveness.
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from incident_investigation_agent.db.session import schema_ready
 from incident_investigation_agent.services.heartbeat import worker_alive
-from incident_investigation_agent.services.metrics import investigation_metrics
+from incident_investigation_agent.services.metrics import investigation_metrics, prometheus_text
+
+_PROM = "text/plain; version=0.0.4"
 
 router = APIRouter()
 
@@ -64,3 +66,25 @@ def metrics(request: Request) -> JSONResponse:
         body = {"status": "unavailable", "database": "down"}
         return JSONResponse(status_code=503, content=body)
     return JSONResponse(status_code=200, content=body)
+
+
+@router.get("/metrics")
+def metrics_scrape(request: Request) -> PlainTextResponse:
+    """The same counts, as text a company's scraper can read. Nothing is pushed."""
+    factory = request.app.state.session_factory
+    if not schema_ready(factory):
+        return _scrape_down()
+    try:
+        with factory() as session:
+            body = investigation_metrics(session)
+    except Exception:
+        return _scrape_down()
+    return PlainTextResponse(prometheus_text(body), status_code=200, media_type=_PROM)
+
+
+def _scrape_down() -> PlainTextResponse:
+    return PlainTextResponse(
+        "database down\n",
+        status_code=503,
+        media_type="text/plain",
+    )
