@@ -168,7 +168,7 @@ FOR UPDATE SKIP LOCKED;
 
 ### 2.4 `worker_beats`
 
-One row per worker process. It is not part of a case. Each process updates its own `beat_at` every few seconds. `GET /api/health` treats the worker as up when any row is inside the last 20 seconds, and as down when every row is missing or stale. That check is not liveness. `GET /api/live` does not read this table. `GET /api/ready` reads `incidents` and does not read this table.
+One row per worker process. It is not part of a case. Each process updates its own `beat_at` every few seconds. `GET /api/health` treats the worker as up when any row is inside the last 20 seconds, and as down when every row is missing or stale. The same response includes how many rows are still inside that window. `/metrics` repeats that number and does not include the host name. A stale row does not add to the count. That check is not liveness. `GET /api/live` does not read this table. `GET /api/ready` reads `incidents` and does not read this table. When the database cannot be read, health omits the count instead of reporting zero.
 
 | Column | Type | Null | Meaning |
 | --- | --- | --- | --- |

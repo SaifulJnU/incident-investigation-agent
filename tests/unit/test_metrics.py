@@ -5,7 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from incident_investigation_agent.db.models import Base, Incident, InvestigationRun
+from incident_investigation_agent.db.models import Base, Incident, InvestigationRun, WorkerBeat, utcnow
+from incident_investigation_agent.services.heartbeat import STALE_AFTER_SECONDS
 from incident_investigation_agent.services.metrics import investigation_metrics, prometheus_text
 
 
@@ -68,6 +69,7 @@ def test_metrics_counts_the_queue_and_the_last_hour():
         "completed_last_hour": 1,
         "failed_last_hour": 1,
         "oldest_queued_seconds": 90,
+        "workers": 0,
     }
     assert "Checkout" not in str(body)
 
@@ -80,10 +82,12 @@ def test_prometheus_text_repeats_the_counts_and_skips_an_empty_age():
             "completed_last_hour": 1,
             "failed_last_hour": 1,
             "oldest_queued_seconds": 90,
+            "workers": 1,
         }
     )
     assert "case_file_runs_queued 1\n" in text
     assert "case_file_oldest_queued_seconds 90\n" in text
+    assert "case_file_workers 1\n" in text
     assert "Checkout" not in text
 
     empty = prometheus_text(
@@ -93,9 +97,11 @@ def test_prometheus_text_repeats_the_counts_and_skips_an_empty_age():
             "completed_last_hour": 0,
             "failed_last_hour": 0,
             "oldest_queued_seconds": None,
+            "workers": 0,
         }
     )
     assert "case_file_runs_queued 0\n" in empty
+    assert "case_file_workers 0\n" in empty
     assert "oldest_queued" not in empty
 
 
@@ -105,3 +111,22 @@ def test_an_empty_queue_has_no_oldest_age():
         body = investigation_metrics(session)
     assert body["queued"] == 0
     assert body["oldest_queued_seconds"] is None
+    assert body["workers"] == 0
+
+
+def test_metrics_count_a_fresh_worker_and_skip_a_stale_one():
+    factory = _factory()
+    with factory() as session:
+        session.add(WorkerBeat(name="checkout-worker-1", beat_at=utcnow()))
+        session.add(
+            WorkerBeat(
+                name="checkout-worker-2",
+                beat_at=utcnow() - timedelta(seconds=STALE_AFTER_SECONDS + 1),
+            )
+        )
+        session.commit()
+        body = investigation_metrics(session)
+
+    assert body["workers"] == 1
+    assert "checkout-worker" not in str(body)
+    assert "checkout-worker" not in prometheus_text(body)

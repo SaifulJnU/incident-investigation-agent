@@ -13,6 +13,7 @@ from incident_investigation_agent.services.heartbeat import (
     STALE_AFTER_SECONDS,
     clear_beat,
     process_beat_name,
+    fresh_worker_count,
     record_beat,
     worker_alive,
 )
@@ -74,6 +75,21 @@ def test_stopping_one_worker_leaves_the_other_beat():
         assert worker_alive(session) is True
         assert worker_alive(session, name="host-a-1") is False
         assert worker_alive(session, name="host-b-1") is True
+
+
+def test_a_stale_beat_does_not_add_to_the_count():
+    factory = _factory()
+    with factory() as session:
+        record_beat(session, name="host-a-1")
+        record_beat(session, name="host-b-1")
+        session.commit()
+        stale = session.get(WorkerBeat, "host-b-1")
+        stale.beat_at = utcnow() - timedelta(seconds=STALE_AFTER_SECONDS + 1)
+        session.commit()
+
+    with factory() as session:
+        assert fresh_worker_count(session) == 1
+        assert worker_alive(session) is True
 
 
 def test_health_stays_up_while_any_beat_is_fresh():

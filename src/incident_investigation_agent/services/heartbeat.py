@@ -46,6 +46,21 @@ def clear_beat(session: Session, *, name: str = BEAT_NAME) -> None:
         session.delete(row)
 
 
+def fresh_worker_count(
+    session: Session,
+    *,
+    stale_after_seconds: int = STALE_AFTER_SECONDS,
+) -> int:
+    """How many heartbeats are still inside the window.
+
+    A crash leaves the last timestamp in place. Once that timestamp is older
+    than the window, the row does not count. The result is a number. It does
+    not include a host name.
+    """
+    rows = session.scalars(select(WorkerBeat)).all()
+    return sum(1 for row in rows if _fresh(row.beat_at, stale_after_seconds))
+
+
 def worker_alive(
     session: Session,
     *,
@@ -60,8 +75,7 @@ def worker_alive(
     longer counts.
     """
     if name is None:
-        rows = session.scalars(select(WorkerBeat)).all()
-        return any(_fresh(row.beat_at, stale_after_seconds) for row in rows)
+        return fresh_worker_count(session, stale_after_seconds=stale_after_seconds) > 0
     row = session.get(WorkerBeat, name)
     if row is None:
         return False

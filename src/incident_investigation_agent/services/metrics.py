@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from incident_investigation_agent.db.models import InvestigationRun, utcnow
+from incident_investigation_agent.services.heartbeat import fresh_worker_count
 
 WINDOW = timedelta(hours=1)
 
@@ -25,13 +26,19 @@ _GAUGES = (
         "case_file_runs_failed_last_hour",
         "Runs that failed in the last hour.",
     ),
+    (
+        "workers",
+        "case_file_workers",
+        "Worker processes with a fresh heartbeat.",
+    ),
 )
 
 
 def prometheus_text(body: dict) -> str:
-    """The same counts as Prometheus text. No title, note, or service name.
+    """The same counts as Prometheus text. No title, note, service, or host.
 
     An empty queue omits the age gauge. A missing age is not zero seconds.
+    Zero workers stays, because a dead fleet is not a missing sample.
     """
     lines: list[str] = []
     for key, name, help_text in _GAUGES:
@@ -50,10 +57,10 @@ def prometheus_text(body: dict) -> str:
 
 
 def investigation_metrics(session: Session, *, now: datetime | None = None) -> dict:
-    """Queue depth and how many runs finished in the last hour.
+    """Queue depth, how many runs finished in the last hour, and live workers.
 
     The result is counts and one age. It does not include a title, a note,
-    or a line of evidence.
+    a line of evidence, or a host name. A stale heartbeat does not count.
     """
     moment = now or utcnow()
     since = moment - WINDOW
@@ -63,6 +70,7 @@ def investigation_metrics(session: Session, *, now: datetime | None = None) -> d
         "completed_last_hour": _finished(session, "completed", since),
         "failed_last_hour": _finished(session, "failed", since),
         "oldest_queued_seconds": _oldest_queued_seconds(session, moment),
+        "workers": fresh_worker_count(session),
     }
 
 

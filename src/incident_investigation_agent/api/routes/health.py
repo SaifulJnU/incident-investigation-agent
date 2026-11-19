@@ -11,7 +11,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from incident_investigation_agent.db.session import schema_ready
-from incident_investigation_agent.services.heartbeat import worker_alive
+from incident_investigation_agent.services.heartbeat import fresh_worker_count
 from incident_investigation_agent.services.metrics import investigation_metrics, prometheus_text
 
 _PROM = "text/plain; version=0.0.4"
@@ -41,13 +41,16 @@ def health(request: Request) -> JSONResponse:
         return JSONResponse(status_code=503, content=body)
     try:
         with factory() as session:
-            alive = worker_alive(session)
+            workers = fresh_worker_count(session)
     except Exception:
-        alive = False
+        body = {"status": "degraded", "database": "ok", "worker": "down"}
+        return JSONResponse(status_code=503, content=body)
+    alive = workers > 0
     body = {
         "status": "ok" if alive else "degraded",
         "database": "ok",
         "worker": "ok" if alive else "down",
+        "workers": workers,
     }
     return JSONResponse(status_code=200 if alive else 503, content=body)
 

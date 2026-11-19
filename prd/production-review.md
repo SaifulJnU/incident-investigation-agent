@@ -17,7 +17,7 @@ It is not yet a service a company should page on. The record, the queue, and the
 | Access | Strong for one company | 401 without a token, 403 for a service outside the grant, 404 for another service's case, dev login refused when `APP_ENV=prod` |
 | Queue | Right shape, small ceiling | `FOR UPDATE SKIP LOCKED`, a cap of 32 waiting runs per service, a 15-second connector timeout, a 20-minute run timeout |
 | Investigation | The weak part | The console does not let the model search. A word list does |
-| Operate it | Thin, with a queue snapshot | Live, ready, and a worker heartbeat exist. `/api/metrics` counts queued, running, and recently finished runs, and it includes no case text. `/metrics` repeats those counts as Prometheus text for a scraper the company already runs. The API does not push them. A push runs pytest |
+| Operate it | Thin, with a queue snapshot | Live, ready, and a worker heartbeat exist. `/api/health` says how many heartbeats are fresh. `/api/metrics` counts queued, running, and recently finished runs, and it includes no case text. `/metrics` repeats those counts, including the worker count, as Prometheus text for a scraper the company already runs. The API does not push them. A push runs pytest |
 | Scale | One company, a quiet hour | A second worker can run. A busy hour of investigations will queue, then return 429 |
 
 ## What already holds
@@ -46,7 +46,7 @@ The first search is still that fixed list. The run then searches once more, usin
 
 ### Each worker process has its own heartbeat
 
-`worker_beats.name` is `<hostname>-<pid>`. A second process does not overwrite the first. A process that is stopping deletes only its row. Health stays up while any row is newer than 20 seconds, and goes down when the last fresh row is gone. A crash still leaves its row until that timestamp is stale.
+`worker_beats.name` is `<hostname>-<pid>`. A second process does not overwrite the first. A process that is stopping deletes only its row. Health stays up while any row is newer than 20 seconds, and goes down when the last fresh row is gone. The same response, and the scrape, say how many rows are still fresh. A stale row does not add to that count, and the count does not include the host name. A crash still leaves its row until that timestamp is stale.
 
 ### The case list is one page, and a finding is a short quote
 
@@ -81,7 +81,7 @@ Scale here means more incidents for one company, in that company's own Postgres.
 | A few investigations an hour | Fine. The queue, the skip lock, and one worker are enough |
 | Several at once | One worker claims four runs. Each run fans out searches on up to eight threads. The model call is the slow part |
 | A bad hour | Each service's waiting list holds 32 runs, then Investigate returns 429 for that service. Another service can still queue. Running runs do not count |
-| A second worker process | Safe. Each process has its own heartbeat row and deletes only that row on stop. The claim lock was already safe |
+| A second worker process | Safe. Each process has its own heartbeat row and deletes only that row on stop. Health stays up while either row is fresh, and the count shows when one of them is gone. The claim lock was already safe |
 | Large log volume | Postgres will not be the first limit. CloudWatch, Datadog, Loki, and GitHub will, because one case fires a handful of queries at each of them |
 | Many companies | A separate deployment each. Do not add a tenant column to this schema |
 
@@ -120,5 +120,6 @@ Each one is small enough to review, and each one is visible to a person using th
 11. Done. The schema note and the user manual say the API listens while migrations retry, so a 503 during startup is the schema, not a dead process.
 12. Done. Python dependencies are pinned. The workflow and the API image install from that lock, so a push does not float the libraries under the tests.
 13. Done. `/metrics` repeats the queue counts as Prometheus text. A company scrapes that path with the agent it already runs. The API does not push those counts. A down database stays 503, and the text includes no case title or note. The console proxy forwards `/metrics` to the API.
+14. Done. `/api/health` and `/metrics` say how many worker heartbeats are fresh. Health stays up while that count is at least one. A stale row does not count, and the text includes no host name. A down database stays 503 on the scrape and does not report zero workers.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.

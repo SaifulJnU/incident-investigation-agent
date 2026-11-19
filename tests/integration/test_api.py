@@ -1,6 +1,7 @@
 import logging
 import uuid
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,8 +11,8 @@ from sqlalchemy.pool import StaticPool
 
 from incident_investigation_agent.api.app import create_app
 from incident_investigation_agent.core.config import Settings, parse_dev_users
-from incident_investigation_agent.db.models import Base, InvestigationRun
-from incident_investigation_agent.services.heartbeat import record_beat
+from incident_investigation_agent.db.models import Base, InvestigationRun, WorkerBeat, utcnow
+from incident_investigation_agent.services.heartbeat import STALE_AFTER_SECONDS, record_beat
 
 
 def _settings() -> Settings:
@@ -59,7 +60,12 @@ def _auth(client, subject: str, password: str) -> dict[str, str]:
 def test_health_stays_open(client):
     response = client.get("/api/health")
     assert response.status_code == 503
-    assert response.json() == {"status": "degraded", "database": "ok", "worker": "down"}
+    assert response.json() == {
+        "status": "degraded",
+        "database": "ok",
+        "worker": "down",
+        "workers": 0,
+    }
     assert response.headers["x-request-id"]
 
 
@@ -104,6 +110,7 @@ def test_metrics_names_an_empty_queue_without_a_token(client):
         "completed_last_hour": 0,
         "failed_last_hour": 0,
         "oldest_queued_seconds": None,
+        "workers": 0,
     }
 
 
@@ -112,6 +119,7 @@ def test_metrics_scrape_repeats_the_queue_without_a_token(client):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain; version=0.0.4")
     assert "case_file_runs_queued 0\n" in response.text
+    assert "case_file_workers 0\n" in response.text
     assert "oldest_queued" not in response.text
     assert response.headers["x-request-id"]
 
@@ -132,6 +140,7 @@ def test_metrics_stays_unavailable_until_the_schema_can_be_read():
     assert "queued" not in response.json()
     assert scrape.status_code == 503
     assert "case_file_runs_queued" not in scrape.text
+    assert "case_file_workers" not in scrape.text
 
 
 def test_health_is_ok_when_the_worker_has_beaten(client):
@@ -142,7 +151,28 @@ def test_health_is_ok_when_the_worker_has_beaten(client):
 
     response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "database": "ok", "worker": "ok"}
+    assert response.json() == {"status": "ok", "database": "ok", "worker": "ok", "workers": 1}
+
+
+def test_health_counts_fresh_workers_and_skips_a_stale_one(client):
+    factory = client.app.state.session_factory
+    with factory() as session:
+        record_beat(session, name="host-a-1")
+        record_beat(session, name="host-b-1")
+        session.commit()
+        stale = session.get(WorkerBeat, "host-b-1")
+        stale.beat_at = utcnow() - timedelta(seconds=STALE_AFTER_SECONDS + 1)
+        session.commit()
+
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    assert response.json()["worker"] == "ok"
+    assert response.json()["workers"] == 1
+    assert "host-a" not in response.text
+    scrape = client.get("/metrics")
+    assert scrape.status_code == 200
+    assert "case_file_workers 1\n" in scrape.text
+    assert "host-" not in scrape.text
 
 
 def test_cases_require_a_token(client):
