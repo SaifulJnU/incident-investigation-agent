@@ -16,7 +16,7 @@ It is not yet a service a company should page on. The record, the queue, and the
 | Case record | Strong | Status history, actors, evidence kept apart from the note, one active run per case |
 | Access | Strong for one company | 401 without a token, 403 for a service outside the grant, 404 for another service's case, dev login refused when `APP_ENV=prod` |
 | Queue | Right shape, small ceiling | `FOR UPDATE SKIP LOCKED`, a cap of 32 waiting runs per service, a 15-second connector timeout, a 20-minute run timeout |
-| Investigation | The weak part | The console does not let the model search. A word list does |
+| Investigation | The weak part | The console does not let the model search. A word list does. A case older than the lookback is searched from its start, for that same length |
 | Operate it | Thin, with a queue snapshot | Live, ready, and a worker heartbeat exist. `/api/health` says how many heartbeats are fresh. `/api/metrics` counts queued, running, and recently finished runs, and it includes no case text. `/metrics` repeats those counts, including the worker count, as Prometheus text for a scraper the company already runs. The API does not push them. A push runs pytest |
 | Scale | One company, a quiet hour | A second worker can run. A busy hour of investigations will queue, then return 429 |
 
@@ -121,5 +121,6 @@ Each one is small enough to review, and each one is visible to a person using th
 12. Done. Python dependencies are pinned. The workflow and the API image install from that lock, so a push does not float the libraries under the tests.
 13. Done. `/metrics` repeats the queue counts as Prometheus text. A company scrapes that path with the agent it already runs. The API does not push those counts. A down database stays 503, and the text includes no case title or note. The console proxy forwards `/metrics` to the API.
 14. Done. `/api/health` and `/metrics` say how many worker heartbeats are fresh. Health stays up while that count is at least one. A stale row does not count, and the text includes no host name. A down database stays 503 on the scrape and does not report zero workers.
+15. Done. CloudWatch, Datadog, Loki, and GitHub search from the case start when that start is older than their lookback, and they keep that same length. A case that began inside the lookback still searches the span ending now. A late investigation reads the hour the errors began. Local log files have no time index. A command-line brief keeps the span ending now unless it has a `Started` line.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.

@@ -8,6 +8,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime
 
 from incident_investigation_agent.core.config import Settings, enabled_connectors
 from incident_investigation_agent.infrastructure.connectors import (
@@ -154,10 +155,15 @@ class SearchBatch:
     unchecked: tuple[str, ...] = ()
 
 
-def gather(settings: Settings, service: str | None, hint: str = "") -> SearchBatch:
+def gather(
+    settings: Settings,
+    service: str | None,
+    hint: str = "",
+    started_at: datetime | None = None,
+) -> SearchBatch:
     names = enabled_connectors(settings.app_env, settings.connectors)
     queries = _queries(hint, service)
-    jobs = _jobs(settings, service, names, queries)
+    jobs = _jobs(settings, service, names, queries, started_at=started_at)
     if not jobs:
         batch = SearchBatch("No connectors are enabled.", ())
         _log_search(names, batch)
@@ -166,7 +172,14 @@ def gather(settings: Settings, service: str | None, hint: str = "") -> SearchBat
     batch = _combine(_collect(jobs, timeout))
     follow = _follow_query(batch.findings, queries, service)
     if follow:
-        more = _jobs(settings, service, names, (follow,), include_github=False)
+        more = _jobs(
+            settings,
+            service,
+            names,
+            (follow,),
+            include_github=False,
+            started_at=started_at,
+        )
         if more:
             batch = _merge(batch, _combine(_collect(more, timeout)))
     _log_search(names, batch)
@@ -307,6 +320,7 @@ def _jobs(
     names: tuple[str, ...],
     queries: tuple[str, ...],
     include_github: bool = True,
+    started_at: datetime | None = None,
 ):
     jobs = []
     searchers = {
@@ -316,20 +330,29 @@ def _jobs(
         "loki": ("search_loki", loki.search_loki_logs),
         "mcp": ("search_mcp", mcp.search_mcp),
     }
+    timed = {"cloudwatch", "datadog", "loki"}
     for name in names:
         if name == "github":
             if include_github:
-                jobs.append(_Job("list_recent_commits", "", lambda: github.list_commits(settings, service)))
+                jobs.append(
+                    _Job(
+                        "list_recent_commits",
+                        "",
+                        lambda started_at=started_at: github.list_commits(
+                            settings, service, started_at=started_at
+                        ),
+                    )
+                )
             continue
         label, function = searchers[name]
         for query in queries:
-            jobs.append(
-                _Job(
-                    label,
-                    query,
-                    lambda query=query, function=function: function(settings, service, query, 20),
+            if name in timed:
+                call = lambda query=query, function=function, started_at=started_at: function(
+                    settings, service, query, 20, started_at
                 )
-            )
+            else:
+                call = lambda query=query, function=function: function(settings, service, query, 20)
+            jobs.append(_Job(label, query, call))
     return jobs
 
 

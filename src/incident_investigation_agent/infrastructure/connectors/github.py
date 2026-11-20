@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 from strands import tool
@@ -11,6 +11,7 @@ from strands import tool
 from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.infrastructure.connectors.http import ConnectorError, request_json
 from incident_investigation_agent.infrastructure.connectors.mapping import mapped_target, require_service
+from incident_investigation_agent.infrastructure.connectors.window import during, search_span, stamp
 
 _REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _API = re.compile(r"^https://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/api/v3)?$")
@@ -29,7 +30,13 @@ def tools_for(settings: Settings, service: str | None):
     return [list_recent_commits]
 
 
-def list_commits(settings: Settings, service: str | None, limit: int = 10) -> str:
+def list_commits(
+    settings: Settings,
+    service: str | None,
+    limit: int = 10,
+    *,
+    started_at: datetime | None = None,
+) -> str:
     scoped = require_service(service)
     if scoped is None:
         return "No service is set on this case, so GitHub was not queried."
@@ -41,10 +48,14 @@ def list_commits(settings: Settings, service: str | None, limit: int = 10) -> st
     if repo is None:
         return "GitHub has no repository for this service. Set GITHUB_ORG or GITHUB_REPOS."
     capped = _limit(limit)
-    since = (datetime.now(timezone.utc) - timedelta(hours=settings.github_lookback_hours)).strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
+    start, end, anchored = search_span(
+        started_at, timedelta(hours=settings.github_lookback_hours)
     )
-    query = urlencode({"since": since, "per_page": capped})
+    span = during(f"{settings.github_lookback_hours} hours", anchored, start)
+    params = {"since": stamp(start), "per_page": capped}
+    if anchored:
+        params["until"] = stamp(end)
+    query = urlencode(params)
     url = f"{settings.github_api_url}/repos/{repo}/commits?{query}"
     headers = {
         "Authorization": f"Bearer {settings.github_token}",
@@ -61,7 +72,7 @@ def list_commits(settings: Settings, service: str | None, limit: int = 10) -> st
         return f"GitHub commit list failed for {repo}: {exc}"
     if not isinstance(body, list) or not body:
         return (
-            f"No commits on {repo} in the last {settings.github_lookback_hours} hours."
+            f"No commits on {repo} in {span}."
         )
     lines = []
     for commit in body[:capped]:

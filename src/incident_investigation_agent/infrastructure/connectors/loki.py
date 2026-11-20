@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import time
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 from strands import tool
@@ -14,6 +14,7 @@ from incident_investigation_agent.infrastructure.connectors.mapping import (
     require_label,
     require_service,
 )
+from incident_investigation_agent.infrastructure.connectors.window import during, epoch_ns, search_span
 
 
 def tools_for(settings: Settings, service: str | None):
@@ -30,7 +31,13 @@ def tools_for(settings: Settings, service: str | None):
     return [search_loki]
 
 
-def search_loki_logs(settings: Settings, service: str | None, query: str, limit: int) -> str:
+def search_loki_logs(
+    settings: Settings,
+    service: str | None,
+    query: str,
+    limit: int,
+    started_at: datetime | None = None,
+) -> str:
     scoped = require_service(service)
     if scoped is None:
         return "No service is set on this case, so Loki was not searched."
@@ -46,9 +53,14 @@ def search_loki_logs(settings: Settings, service: str | None, query: str, limit:
     capped = _limit(limit)
     escaped = needle.replace("\\", "\\\\").replace('"', '\\"')
     logql = f'{{{label}="{scoped}"}} |= "{escaped}"'
-    end_ns = time.time_ns()
-    start_ns = end_ns - settings.loki_lookback_minutes * 60 * 1_000_000_000
-    url = f"{base}/loki/api/v1/query_range?{urlencode({'query': logql, 'start': start_ns, 'end': end_ns, 'limit': capped})}"
+    start, end, anchored = search_span(
+        started_at, timedelta(minutes=settings.loki_lookback_minutes)
+    )
+    span = during(f"{settings.loki_lookback_minutes} minutes", anchored, start)
+    url = (
+        f"{base}/loki/api/v1/query_range?"
+        f"{urlencode({'query': logql, 'start': epoch_ns(start), 'end': epoch_ns(end), 'limit': capped})}"
+    )
     headers = {}
     if settings.loki_token:
         headers["Authorization"] = f"Bearer {settings.loki_token}"
@@ -60,7 +72,7 @@ def search_loki_logs(settings: Settings, service: str | None, query: str, limit:
         )
     except ConnectorError as exc:
         return f"Loki search failed: {exc}"
-    return _lines(body, label, scoped, needle, settings.loki_lookback_minutes, capped)
+    return _lines(body, label, scoped, needle, span, capped)
 
 
 def _base_url(raw: str) -> str | None:
@@ -72,7 +84,7 @@ def _base_url(raw: str) -> str | None:
     return url
 
 
-def _lines(body: object, label: str, service: str, needle: str, minutes: int, limit: int) -> str:
+def _lines(body: object, label: str, service: str, needle: str, span: str, limit: int) -> str:
     data = body.get("data") if isinstance(body, dict) else None
     result = data.get("result") if isinstance(data, dict) else None
     lines: list[str] = []
@@ -91,7 +103,7 @@ def _lines(body: object, label: str, service: str, needle: str, minutes: int, li
     if not lines:
         return (
             f"No Loki lines matched {needle!r} for {label}={service} "
-            f"during the last {minutes} minutes."
+            f"during {span}."
         )
     return "\n".join(lines[:limit])
 

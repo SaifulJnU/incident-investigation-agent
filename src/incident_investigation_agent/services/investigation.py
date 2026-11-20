@@ -21,6 +21,7 @@ from incident_investigation_agent.domain.evidence import EvidenceStore
 from incident_investigation_agent.services.report import (
     BRIEF_TAIL,
     IncidentBrief,
+    case_started_at,
     investigation_prompt,
     message_text,
 )
@@ -243,10 +244,11 @@ def investigate_text(
 ) -> str:
     """Search the enabled connectors, keep the lines, and write one note.
 
-    The console worker and the command line both use this. The model does not
-    choose the searches and does not call tools.
+    The console worker and the command line both use this. A ``Started`` line
+    in the brief is the case time. The model does not choose the searches and
+    does not call tools.
     """
-    batch = gather(settings, service, prompt)
+    batch = gather(settings, service, prompt, case_started_at(prompt))
     _record_findings(store, batch.findings)
     note = _note_prompt(prompt, batch)
     return message_text(build_note_agent(settings)(note))

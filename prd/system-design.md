@@ -95,7 +95,7 @@ Evidence already recorded:
 Searches run before this note is written.
 ```
 
-The worker removes that last line before the model call. The searches have already run. Local logs read `LOG_DIR/<service>`. In the local stack a checkout case reads `/app/examples/logs/checkout-api/api.log`. A case for another service cannot read that directory.
+The worker removes that last line before the model call. The searches have already run. The `Started` line is the case time those searches use. CloudWatch, Datadog, Loki, and GitHub keep the lookback ending now when that time falls inside it. When the case started earlier, the search begins there and runs for the same length, so a late investigation still reads the hour the errors began. Local logs read `LOG_DIR/<service>` and have no time index. In the local stack a checkout case reads `/app/examples/logs/checkout-api/api.log`. A case for another service cannot read that directory.
 
 ## Plugin shape
 

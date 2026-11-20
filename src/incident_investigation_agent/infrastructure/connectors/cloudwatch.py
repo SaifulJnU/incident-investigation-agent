@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-import time
+from datetime import datetime, timedelta
 
 from strands import tool
 
@@ -13,6 +13,7 @@ from incident_investigation_agent.infrastructure.connectors.mapping import (
     mapped_target,
     require_service,
 )
+from incident_investigation_agent.infrastructure.connectors.window import during, epoch_ms, search_span
 from incident_investigation_agent.infrastructure.redact import configured_secrets, redact
 
 _GROUP = re.compile(r"^[\w./-]{1,512}$")
@@ -51,7 +52,13 @@ def tools_for(settings: Settings, service: str | None):
     return [search_cloudwatch]
 
 
-def search_cloudwatch_logs(settings: Settings, service: str | None, query: str, limit: int) -> str:
+def search_cloudwatch_logs(
+    settings: Settings,
+    service: str | None,
+    query: str,
+    limit: int,
+    started_at: datetime | None = None,
+) -> str:
     scoped = require_service(service)
     if scoped is None:
         return "No service is set on this case, so CloudWatch was not searched."
@@ -65,7 +72,13 @@ def search_cloudwatch_logs(settings: Settings, service: str | None, query: str, 
             "or CLOUDWATCH_LOG_GROUPS."
         )
     capped = _limit(limit)
-    start = int((time.time() - settings.cloudwatch_lookback_minutes * 60) * 1000)
+    start, end, anchored = search_span(
+        started_at, timedelta(minutes=settings.cloudwatch_lookback_minutes)
+    )
+    span = during(f"{settings.cloudwatch_lookback_minutes} minutes", anchored, start)
+    bounds = {"startTime": epoch_ms(start), "limit": capped}
+    if anchored:
+        bounds["endTime"] = epoch_ms(end)
     try:
         client = logs_client(
             settings.aws_region,
@@ -75,17 +88,13 @@ def search_cloudwatch_logs(settings: Settings, service: str | None, query: str, 
         page = client.filter_log_events(
             logGroupName=group,
             filterPattern=needle if " " not in needle else f'"{needle}"',
-            startTime=start,
-            limit=capped,
+            **bounds,
         )
     except Exception as exc:
         return f"CloudWatch search failed for {group}: {_safe_error(exc, settings)}"
     events = page.get("events") or []
     if not events:
-        return (
-            f"No CloudWatch events matched {needle!r} in {group} "
-            f"during the last {settings.cloudwatch_lookback_minutes} minutes."
-        )
+        return f"No CloudWatch events matched {needle!r} in {group} during {span}."
     lines = []
     for event in events[:capped]:
         message = str(event.get("message", "")).strip().replace("\n", " ")

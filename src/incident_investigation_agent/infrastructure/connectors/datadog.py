@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta
 
 from strands import tool
 
 from incident_investigation_agent.core.config import Settings
 from incident_investigation_agent.infrastructure.connectors.http import ConnectorError, request_json
 from incident_investigation_agent.infrastructure.connectors.mapping import clean_query, require_service
+from incident_investigation_agent.infrastructure.connectors.window import during, search_span, stamp
 
 _SITE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,200}$")
 _TAG = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -28,7 +30,13 @@ def tools_for(settings: Settings, service: str | None):
     return [search_datadog]
 
 
-def search_datadog_logs(settings: Settings, service: str | None, query: str, limit: int) -> str:
+def search_datadog_logs(
+    settings: Settings,
+    service: str | None,
+    query: str,
+    limit: int,
+    started_at: datetime | None = None,
+) -> str:
     scoped = require_service(service)
     if scoped is None:
         return "No service is set on this case, so Datadog was not searched."
@@ -42,12 +50,20 @@ def search_datadog_logs(settings: Settings, service: str | None, query: str, lim
     if not _TAG.fullmatch(tag):
         return "DATADOG_SERVICE_TAG must be a label such as service."
     capped = _limit(limit)
+    start, end, anchored = search_span(
+        started_at, timedelta(minutes=settings.datadog_lookback_minutes)
+    )
+    span = during(f"{settings.datadog_lookback_minutes} minutes", anchored, start)
+    if anchored:
+        window_from, window_to = stamp(start), stamp(end)
+    else:
+        window_from, window_to = f"now-{settings.datadog_lookback_minutes}m", "now"
     url = f"https://api.{settings.datadog_site}/api/v2/logs/events/search"
     payload = {
         "filter": {
             "query": f"{tag}:{scoped} {needle}",
-            "from": f"now-{settings.datadog_lookback_minutes}m",
-            "to": "now",
+            "from": window_from,
+            "to": window_to,
         },
         "page": {"limit": capped},
         "sort": "-timestamp",
@@ -70,7 +86,7 @@ def search_datadog_logs(settings: Settings, service: str | None, query: str, lim
     if not rows:
         return (
             f"No Datadog logs matched {needle!r} for {tag}:{scoped} "
-            f"during the last {settings.datadog_lookback_minutes} minutes."
+            f"during {span}."
         )
     lines = []
     for row in rows[:capped]:

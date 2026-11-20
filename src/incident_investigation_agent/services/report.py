@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,28 @@ def investigation_prompt(brief: IncidentBrief, evidence: list) -> str:
             lines.append(f"- [{item.kind}] {item.summary} (source: {item.source})")
     lines.append(BRIEF_TAIL)
     return "\n".join(lines)
+
+
+def case_started_at(prompt: str) -> datetime | None:
+    """Read the ``Started:`` line the worker writes. A brief without one has no case time.
+
+    Only the brief is read. A note added later cannot move the window.
+    """
+    head = prompt.split(BRIEF_TAIL)[0] if BRIEF_TAIL in prompt else prompt
+    for line in head.splitlines():
+        if not line.startswith("Started:"):
+            continue
+        raw = line.split(":", 1)[1].strip()
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    return None
 
 
 def message_text(result: object) -> str:
