@@ -47,7 +47,7 @@ This is the slice that runs.
 
 ## 5. What a company will plug in
 
-Built for logs and GitHub commits. Slack and PagerDuty intake are still later. The contract below is what each plugin does.
+Built for logs, one Datadog metric, and GitHub commits. Slack and PagerDuty intake are still later. The contract below is what each plugin does.
 
 A tool plugin:
 
@@ -84,16 +84,17 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 
 - Investigate stores a run and returns without waiting for the model. Each service's waiting list holds at most `MAX_QUEUED_RUNS` runs.
 - The worker sends the model the title, service, severity, start time, description, and evidence already on the case.
-- Before that call, the worker searches every enabled connector for `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three other words from the brief. It then searches once more for one status code, version, or word from the lines that came back. GitHub is asked for recent commits once, not again for that follow-up.
+- Before that call, the worker searches every enabled connector for `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three other words from the brief. It then searches once more for one status code, version, or word from the lines that came back. GitHub is asked for recent commits once, not again for that follow-up. When `DATADOG_METRIC` is set, Datadog is also asked once for that metric, not again for the follow-up.
 - CloudWatch, Datadog, and Loki use their lookback ending now when the case started inside that span. A case that started earlier is searched from its start time, for that same length. GitHub uses its hour lookback the same way. Local log files have no time index. A command-line brief with no `Started` line keeps the span ending now.
 - The worker stores each matching line as evidence, at most 2000 characters. The model does not choose the searches and does not call tools.
+- `DATADOG_METRIC` is one Datadog query. `SERVICE` in it is the case service. The query has to name that service, so a checkout case cannot read a payments metric. The call uses the same span as the Datadog logs. The case stores last and peak. When the setting is empty, the run says the metric was not queried.
 - The worker stores the model's final text as the incident note.
 - The console shows the latest run: provider, model name, status, note, and error if the run failed.
 
 ### 6.3 Evidence
 
 - A person can add a note of kind symptom, log, timeline, change, or hypothesis.
-- The worker adds the same kinds for each matching line it keeps. A log line is `log`. A GitHub commit is `change`. A matching line is stored at most 2000 characters. A longer line keeps its start and ends with `...`. A note a person writes is not cut by that limit.
+- The worker adds the same kinds for each matching line it keeps. A log line is `log`. A GitHub commit is `change`. A Datadog metric is `symptom`. A matching line is stored at most 2000 characters. A longer line keeps its start and ends with `...`. A note a person writes is not cut by that limit.
 - The console groups them: timeline (symptom, timeline, change), hypotheses, log lines.
 
 ### 6.4 Tools that must be pluggable
@@ -103,7 +104,7 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 | Local logs | Search text files in a configured directory | Built |
 | Case file | Record and list evidence on the case | Built |
 | CloudWatch Logs | Search a log group by time and filter | Built. `APP_ENV=prod` |
-| Datadog | Search logs. A metric query is later | Built for logs. `APP_ENV=prod` |
+| Datadog | Search logs, and one metric for the case service | Built. `APP_ENV=prod` |
 | Grafana or Loki | Search logs for the service label | Built. `APP_ENV=prod` |
 | GitHub | List commits for the service in the lookback window | Built. `APP_ENV=prod` |
 | Slack | Post nothing in v1. Later, open a case from a channel | Planned |
@@ -149,5 +150,5 @@ A tester can:
 
 ## 10. Open decisions
 
-- How a company maps a service name is configuration: `CLOUDWATCH_LOG_GROUP_PREFIX`, `CLOUDWATCH_LOG_GROUPS`, `DATADOG_SERVICE_TAG`, `LOKI_LABEL`, `GITHUB_ORG`, and `GITHUB_REPOS`.
+- How a company maps a service name is configuration: `CLOUDWATCH_LOG_GROUP_PREFIX`, `CLOUDWATCH_LOG_GROUPS`, `DATADOG_SERVICE_TAG`, `DATADOG_METRIC`, `LOKI_LABEL`, `GITHUB_ORG`, and `GITHUB_REPOS`.
 - How long a run may stay in `running` before the worker marks it failed.

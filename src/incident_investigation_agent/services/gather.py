@@ -114,6 +114,9 @@ _STATUS = (
     "no service is set",
     "cloudwatch search failed",
     "datadog search failed",
+    "datadog metric query failed",
+    "datadog metrics were not queried",
+    "no datadog points",
     "loki search failed",
     "mcp search failed",
     "mcp returned no ",
@@ -135,6 +138,7 @@ _MISS = (
     "no lines matched",
     "no cloudwatch events matched",
     "no datadog logs matched",
+    "no datadog points",
     "no loki lines matched",
     "no commits on ",
 )
@@ -178,6 +182,7 @@ def gather(
             names,
             (follow,),
             include_github=False,
+            include_metric=False,
             started_at=started_at,
         )
         if more:
@@ -246,9 +251,14 @@ def _follow_query(findings: tuple[Finding, ...], queries: tuple[str, ...], servi
 
     The first search does not know this token. A code or a version is used
     before an ordinary word, because that is the sharper second question.
+    A metric line is skipped. Its words were written here, not found in a log.
     """
     blocked = _blocked(queries, service)
-    texts = [_FILE_PREFIX.sub("", item.summary, count=1) for item in findings]
+    texts = [
+        _FILE_PREFIX.sub("", item.summary, count=1)
+        for item in findings
+        if item.kind != "symptom"
+    ]
     for text in texts:
         for token in _STATUS_CODE.findall(text):
             if token not in blocked:
@@ -320,6 +330,7 @@ def _jobs(
     names: tuple[str, ...],
     queries: tuple[str, ...],
     include_github: bool = True,
+    include_metric: bool = True,
     started_at: datetime | None = None,
 ):
     jobs = []
@@ -344,6 +355,16 @@ def _jobs(
                     )
                 )
             continue
+        if name == "datadog" and include_metric:
+            jobs.append(
+                _Job(
+                    "query_datadog_metric",
+                    "",
+                    lambda started_at=started_at: datadog.query_datadog_metric(
+                        settings, service, started_at=started_at
+                    ),
+                )
+            )
         label, function = searchers[name]
         for query in queries:
             if name in timed:
@@ -415,6 +436,7 @@ def _timeout_text(label: str, timeout: float) -> str:
         "search_logs": "Log search failed",
         "search_cloudwatch": "CloudWatch search failed",
         "search_datadog": "Datadog search failed",
+        "query_datadog_metric": "Datadog metric query failed",
         "search_loki": "Loki search failed",
         "search_mcp": "MCP search failed",
         "list_recent_commits": "Commit list failed",
@@ -435,7 +457,7 @@ def _combine(blocks: list[tuple[str, str, str]]) -> SearchBatch:
         title = f"{label} {query}".strip()
         lines.append(f"{title}:")
         lines.append(body.strip() or "(empty)")
-        kind = "change" if label == "list_recent_commits" else "log"
+        kind = {"list_recent_commits": "change", "query_datadog_metric": "symptom"}.get(label, "log")
         hits = 0
         status = ""
         for raw in body.splitlines():

@@ -7,7 +7,10 @@ import pytest
 
 from incident_investigation_agent.core.config import Settings, enabled_connectors
 from incident_investigation_agent.infrastructure.connectors.cloudwatch import search_cloudwatch_logs
-from incident_investigation_agent.infrastructure.connectors.datadog import search_datadog_logs
+from incident_investigation_agent.infrastructure.connectors.datadog import (
+    query_datadog_metric,
+    search_datadog_logs,
+)
 from incident_investigation_agent.infrastructure.connectors.github import list_commits
 from incident_investigation_agent.infrastructure.connectors.http import ConnectorError, request_json
 from incident_investigation_agent.infrastructure.connectors.loki import search_loki_logs
@@ -49,6 +52,7 @@ def test_prod_enables_company_connectors():
     assert [tool.tool_name for tool in tools] == [
         "search_cloudwatch",
         "search_datadog",
+        "query_datadog_metric",
         "search_loki",
         "list_recent_commits",
     ]
@@ -153,6 +157,118 @@ def test_datadog_scopes_the_query_and_hides_the_key(monkeypatch):
 def test_datadog_names_the_missing_setting():
     result = search_datadog_logs(_settings(app_env="prod"), "checkout-api", "timeout", 5)
     assert result == "Datadog is not configured. Set DATADOG_API_KEY."
+
+
+_METRIC = "sum:trace.servlet.request.errors{service:SERVICE}.as_count()"
+
+
+def test_datadog_metric_quotes_last_and_peak_for_this_service(monkeypatch):
+    seen = {}
+
+    def fake(url, method="GET", headers=None, payload=None, timeout=15):
+        seen["url"] = url
+        seen["method"] = method
+        seen["payload"] = payload
+        seen["key"] = headers["DD-API-KEY"]
+        return {
+            "status": "ok",
+            "series": [
+                {
+                    "metric": "trace.servlet.request.errors",
+                    "pointlist": [[1, 4], [2, None], [3, 12.5], [4, 9]],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.infrastructure.connectors.datadog.request_json",
+        fake,
+    )
+    settings = _settings(
+        app_env="prod",
+        datadog_api_key="secret-key",
+        datadog_app_key="secret-app",
+        datadog_site="datadoghq.eu",
+        datadog_metric=_METRIC,
+    )
+    result = query_datadog_metric(settings, "checkout-api")
+    parsed = parse_qs(urlparse(seen["url"]).query)
+    assert seen["url"].startswith("https://api.datadoghq.eu/api/v1/query?")
+    assert seen["method"] == "GET"
+    assert seen["payload"] is None
+    assert seen["key"] == "secret-key"
+    assert parsed["query"] == ["sum:trace.servlet.request.errors{service:checkout-api}.as_count()"]
+    assert "payments" not in parsed["query"][0]
+    assert result == (
+        "datadog metric service:checkout-api trace.servlet.request.errors: "
+        "last=9 peak=12.5 during the last 60 minutes."
+    )
+    assert "secret-key" not in result
+
+
+def test_datadog_metric_uses_the_case_start(monkeypatch):
+    from datetime import datetime, timezone
+
+    seen = {}
+
+    def fake(url, method="GET", headers=None, payload=None, timeout=15):
+        seen["url"] = url
+        return {"series": []}
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.infrastructure.connectors.datadog.request_json",
+        fake,
+    )
+    settings = _settings(
+        app_env="prod",
+        datadog_api_key="secret-key",
+        datadog_app_key="secret-app",
+        datadog_metric=_METRIC,
+    )
+    started = datetime(2026, 9, 22, 14, 2, tzinfo=timezone.utc)
+    result = query_datadog_metric(settings, "checkout-api", started_at=started)
+    parsed = parse_qs(urlparse(seen["url"]).query)
+    assert parsed["from"] == [str(int(started.timestamp()))]
+    assert parsed["to"] == [str(int(started.timestamp()) + 60 * 60)]
+    assert "No Datadog points for service:checkout-api during 60 minutes from 2026-09-22T14:02:00Z." == result
+
+
+def test_datadog_metric_refuses_a_query_that_names_another_service(monkeypatch):
+    def fake(url, method="GET", headers=None, payload=None, timeout=15):
+        raise AssertionError(url)
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.infrastructure.connectors.datadog.request_json",
+        fake,
+    )
+    settings = _settings(
+        app_env="prod",
+        datadog_api_key="secret-key",
+        datadog_app_key="secret-app",
+        datadog_metric="sum:errors{service:payments-api}.as_count()",
+    )
+    unnamed = query_datadog_metric(settings, "checkout-api")
+    assert "was not called" in unnamed
+    assert "payments-api" not in unnamed
+    other = _settings(
+        app_env="prod",
+        datadog_api_key="secret-key",
+        datadog_app_key="secret-app",
+        datadog_metric="sum:errors{service:SERVICE,service:payments-api}.as_count()",
+    )
+    refused = query_datadog_metric(other, "checkout-api")
+    assert refused == "Datadog metric query reads another service, so it was not called."
+
+
+def test_datadog_metric_names_an_unset_query():
+    settings = _settings(
+        app_env="prod",
+        datadog_api_key="secret-key",
+        datadog_app_key="secret-app",
+    )
+    assert query_datadog_metric(settings, "checkout-api") == (
+        "Datadog metrics were not queried. Set DATADOG_METRIC."
+    )
 
 
 def test_loki_scopes_the_label(monkeypatch):

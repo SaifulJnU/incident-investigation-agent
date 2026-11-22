@@ -235,6 +235,94 @@ def test_a_status_code_in_the_first_lines_is_the_follow_up(tmp_path):
     assert any("status=503" in item.summary for item in batch.findings)
 
 
+def test_datadog_metric_is_a_symptom_and_is_not_asked_again(monkeypatch):
+    calls = {"metric": 0}
+
+    def logs(_settings, _service, query, _limit, started_at=None):
+        if query == "503":
+            return "datadog service:checkout-api: ERROR gateway returned 503"
+        return "datadog service:checkout-api: ERROR timeout status=503"
+
+    def metric(_settings, _service, started_at=None):
+        calls["metric"] += 1
+        return (
+            "datadog metric service:checkout-api trace.servlet.request.errors: "
+            "last=12 peak=40 during the last 60 minutes."
+        )
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.gather.datadog.search_datadog_logs",
+        logs,
+    )
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.gather.datadog.query_datadog_metric",
+        metric,
+    )
+    settings = _settings(Path("examples/logs"), ("datadog",))
+    batch = gather(settings, "checkout-api")
+    assert calls["metric"] == 1
+    symptoms = [item for item in batch.findings if item.kind == "symptom"]
+    assert len(symptoms) == 1
+    assert "last=12" in symptoms[0].summary
+    assert "peak=40" in symptoms[0].summary
+    assert batch.text.count("query_datadog_metric:") == 1
+    assert "search_datadog 503:" in batch.text
+    assert "search_datadog peak:" not in batch.text
+
+
+def test_an_unset_datadog_metric_is_unchecked_and_the_logs_stay(monkeypatch):
+    def logs(_settings, _service, query, _limit, started_at=None):
+        return "datadog service:checkout-api: ERROR vault timeout"
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.gather.datadog.search_datadog_logs",
+        logs,
+    )
+    settings = _settings(
+        Path("examples/logs"),
+        ("datadog",),
+        datadog_api_key="secret-key",
+        datadog_app_key="secret-app",
+    )
+    batch = gather(settings, "checkout-api")
+    assert any(item.kind == "log" and "vault timeout" in item.summary for item in batch.findings)
+    assert all(item.kind != "symptom" for item in batch.findings)
+    assert "Datadog metrics were not queried. Set DATADOG_METRIC." in batch.unchecked
+    assert "secret-key" not in batch.text
+
+
+def test_a_datadog_metric_with_no_points_is_a_miss():
+    batch = _combine(
+        [
+            (
+                "query_datadog_metric",
+                "",
+                "No Datadog points for service:checkout-api during the last 60 minutes.",
+            )
+        ]
+    )
+    assert batch.findings == ()
+    assert batch.misses == ("query_datadog_metric",)
+
+
+def test_a_failed_datadog_metric_is_not_checked():
+    batch = _combine(
+        [
+            ("query_datadog_metric", "", "Datadog metric query failed: HTTP 401."),
+            (
+                "search_datadog",
+                "timeout",
+                "datadog service:checkout-api: ERROR vault timeout",
+            ),
+        ]
+    )
+    assert batch.unchecked == ("Datadog metric query failed: HTTP 401.",)
+    assert [item.summary for item in batch.findings] == [
+        "datadog service:checkout-api: ERROR vault timeout"
+    ]
+    assert batch.findings[0].kind == "log"
+
+
 def test_note_prompt_leads_with_each_match_once():
     prompt = "Incident: Checkout\nSearches run before this note is written."
     batch = SearchBatch(
@@ -255,8 +343,8 @@ def test_note_prompt_leads_with_each_match_once():
     assert note.endswith("Write the incident note from these lines.")
 
 
-def _settings(log_dir: Path, connectors: tuple[str, ...], connector_timeout_seconds: int = 15) -> Settings:
-    return Settings(
+def _settings(log_dir: Path, connectors: tuple[str, ...], connector_timeout_seconds: int = 15, **overrides) -> Settings:
+    values = dict(
         model_provider="ollama",
         ollama_host="http://localhost:11434",
         ollama_model="llama3.1",
@@ -269,3 +357,5 @@ def _settings(log_dir: Path, connectors: tuple[str, ...], connector_timeout_seco
         connectors=connectors,
         connector_timeout_seconds=connector_timeout_seconds,
     )
+    values.update(overrides)
+    return Settings(**values)

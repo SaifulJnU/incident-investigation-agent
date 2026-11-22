@@ -18,6 +18,14 @@ def test_defaults_to_bedrock(monkeypatch):
     assert enabled_connectors(settings.app_env, settings.connectors) == ("local_logs",)
 
 
+def test_datadog_metric_comes_from_the_environment(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "oidc")
+    monkeypatch.setenv("OIDC_ISSUER", "https://login.example.com")
+    monkeypatch.setenv("DATADOG_METRIC", "sum:errors{service:SERVICE}.as_count()")
+    settings = Settings.from_env()
+    assert settings.datadog_metric == "sum:errors{service:SERVICE}.as_count()"
+
+
 def test_prod_uses_company_log_sources(monkeypatch):
     monkeypatch.setenv("APP_ENV", "prod")
     monkeypatch.delenv("CONNECTORS", raising=False)

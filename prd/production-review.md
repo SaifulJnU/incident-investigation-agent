@@ -9,14 +9,14 @@ This is a working record for the next changes. It is not a launch checklist.
 
 Case file is a solid single-company pilot. One on-call team can run it, sign in, keep a case, and get a note from logs the company already has.
 
-It is not yet a service a company should page on. The record, the queue, and the access checks are ahead of the investigation itself. The investigation is a fixed word search plus one model call. The design notes now describe that same path.
+It is not yet a service a company should page on. The record, the queue, and the access checks are ahead of the investigation itself. The investigation is a fixed word search, one Datadog metric when that query is set, plus one model call. The design notes now describe that same path.
 
 | Area | Grade | Why |
 | --- | --- | --- |
 | Case record | Strong | Status history, actors, evidence kept apart from the note, one active run per case |
 | Access | Strong for one company | 401 without a token, 403 for a service outside the grant, 404 for another service's case, dev login refused when `APP_ENV=prod` |
 | Queue | Right shape, small ceiling | `FOR UPDATE SKIP LOCKED`, a cap of 32 waiting runs per service, a 15-second connector timeout, a 20-minute run timeout |
-| Investigation | The weak part | The console does not let the model search. A word list does. A case older than the lookback is searched from its start, for that same length |
+| Investigation | The weak part | The console does not let the model search. A word list does. A case older than the lookback is searched from its start, for that same length. When Datadog is given one metric, that query uses the same span and the note can quote last and peak |
 | Operate it | Thin, with a queue snapshot | Live, ready, and a worker heartbeat exist. `/api/health` says how many heartbeats are fresh. `/api/metrics` counts queued, running, and recently finished runs, and it includes no case text. `/metrics` repeats those counts, including the worker count, as Prometheus text for a scraper the company already runs. The API does not push them. A push runs pytest |
 | Scale | One company, a quiet hour | A second worker can run. A busy hour of investigations will queue, then return 429 |
 
@@ -70,7 +70,11 @@ The first search is still that fixed list. The run then searches once more, usin
 
 ### The search asks one follow-up question
 
-`gather` searches `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three extra words from the brief. It then takes one status code, version, or word from the lines that came back, if that token was not already searched, and runs that query before the note is written. A code or a version is chosen before an ordinary word. GitHub is still asked once, not again for the follow-up.
+`gather` searches `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three extra words from the brief. It then takes one status code, version, or word from the lines that came back, if that token was not already searched, and runs that query before the note is written. A code or a version is chosen before an ordinary word. GitHub is still asked once, not again for the follow-up. A metric line is not a source for that word.
+
+### Datadog can quote one metric
+
+`DATADOG_METRIC` is one query. `SERVICE` in it is replaced with the case service, and the query has to name that service. The call uses the same span as the log search. The case stores last and peak as a symptom. The follow-up word search does not call it again. When the setting is empty, the run says the metric was not queried and still keeps the logs. A checkout case cannot read a payments metric.
 
 ## How far it scales
 
@@ -122,5 +126,6 @@ Each one is small enough to review, and each one is visible to a person using th
 13. Done. `/metrics` repeats the queue counts as Prometheus text. A company scrapes that path with the agent it already runs. The API does not push those counts. A down database stays 503, and the text includes no case title or note. The console proxy forwards `/metrics` to the API.
 14. Done. `/api/health` and `/metrics` say how many worker heartbeats are fresh. Health stays up while that count is at least one. A stale row does not count, and the text includes no host name. A down database stays 503 on the scrape and does not report zero workers.
 15. Done. CloudWatch, Datadog, Loki, and GitHub search from the case start when that start is older than their lookback, and they keep that same length. A case that began inside the lookback still searches the span ending now. A late investigation reads the hour the errors began. Local log files have no time index. A command-line brief keeps the span ending now unless it has a `Started` line.
+16. Done. When `DATADOG_METRIC` is set, a run queries that one metric for the case service over the same span as the logs. The line stored on the case is a symptom: last and peak. A query that does not name this service is not called. An unset metric is recorded as not checked, and the log search still runs. The follow-up word search does not query the metric again.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.

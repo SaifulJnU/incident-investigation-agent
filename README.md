@@ -13,7 +13,7 @@ The alert system still pages. This service writes the investigation. The numbers
 3. A case that is resolved, or already has a run in progress, is refused with 409. A service that already has 32 waiting runs, unless `MAX_QUEUED_RUNS` says otherwise, is refused with 429. Another service can still queue.
 4. A clear case is queued. The API returns 202. It does not call the model.
 5. A worker, outside that request, claims up to four queued runs with `FOR UPDATE SKIP LOCKED`.
-6. It builds a brief from the case and searches the systems this company has enabled. The queries are `timeout`, `timed out`, and `500`, plus a version, a status code, and a few words from the brief. It then searches once more for one word or code from the lines that came back. CloudWatch, Datadog, Loki, and GitHub search the lookback ending now when the case started inside it, and from the case start for that same length when it started earlier. The searches are read-only. The model does not choose them.
+6. It builds a brief from the case and searches the systems this company has enabled. The queries are `timeout`, `timed out`, and `500`, plus a version, a status code, and a few words from the brief. It then searches once more for one word or code from the lines that came back. CloudWatch, Datadog, Loki, and GitHub search the lookback ending now when the case started inside it, and from the case start for that same length when it started earlier. When `DATADOG_METRIC` is set, Datadog is also asked once for that metric over the same span, and the case stores last and peak. A query that names another service is not called. The searches are read-only. The model does not choose them.
 7. One model call writes the note. Evidence stays apart from that prose: symptom, log, timeline, change, hypothesis.
 8. The console poll shows the note. A person marks the case mitigated or resolved.
 
@@ -35,7 +35,7 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 
 | Part | In this build |
 | --- | --- |
-| Search | 4 production systems (CloudWatch, Datadog, Loki, GitHub), or a local log folder. MCP stays off until `CONNECTORS` includes it |
+| Search | 4 production systems (CloudWatch, Datadog, Loki, and GitHub), or a local log folder. Datadog can also read one metric named by `DATADOG_METRIC`. MCP stays off until `CONNECTORS` includes it |
 | Model | Amazon Bedrock in production, Ollama locally. The console does not change |
 | Login | Company identity provider in production (OIDC, PKCE). The demo username and password start only when `APP_ENV=local`. Production refuses to start with `AUTH_MODE=dev` |
 | Access | No token is 401. A service the token does not grant is 403. Another service's case is 404 |
@@ -49,7 +49,7 @@ Severity is `sev1` through `sev4`. Paging stays in the existing alert tool.
 | Probes | `/api/live` is 200 when the process is up. `/api/ready` is 503 while it waits on the database. `/api/health` reports the worker down only when every heartbeat is missing or stale, and it says how many heartbeats are fresh. `/api/metrics` counts the queue and the fresh workers, and it does not include case text. `/metrics` repeats those counts as Prometheus text |
 | Case list | 50 cases a page, newest start first. Older cases loads the next page. A stored finding is at most 2000 characters |
 | Case page | The incident note sits under the brief, with how long it took. Below that, one record lists status, evidence, and each note in time order |
-| Tests | 119 automated tests for access, connectors, the API, the worker, and the command line |
+| Tests | 128 automated tests for access, connectors, the API, the worker, and the command line |
 | Stack | Python, FastAPI, Postgres, Alembic, React |
 
 ## Run it

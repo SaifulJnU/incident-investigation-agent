@@ -11,7 +11,7 @@ Case file is for a company that already has incidents and already has some recor
 - A person decides mitigation and resolution.
 - Local run with Ollama and a log directory.
 - Production run with Bedrock, or with Ollama if that is the company's choice.
-- Log and deploy tools, each optional: CloudWatch, Datadog, Grafana Loki, and GitHub, selected with `APP_ENV=prod` or a shorter `CONNECTORS` list. Slack and PagerDuty as ways to open a case are still later.
+- Log and deploy tools, each optional: CloudWatch, Datadog, Grafana Loki, and GitHub, selected with `APP_ENV=prod` or a shorter `CONNECTORS` list. Datadog can also read one metric when `DATADOG_METRIC` is set. Slack and PagerDuty as ways to open a case are still later.
 
 ## Out of scope
 
@@ -43,7 +43,7 @@ Same case shape. The platform owner enables a CloudWatch plugin and maps `checko
 
 ### 3. A company that lives in Datadog
 
-Same case shape. The Datadog plugin searches logs, and later a metric, with that account's API key. GitHub can be enabled beside it so the agent can see commits to the service between the start time and now. CloudWatch stays off.
+Same case shape. The Datadog plugin searches logs, and one metric when `DATADOG_METRIC` is set, with that account's API key. The metric uses the same span as the logs. The case records last and peak, and the note can quote those numbers. GitHub can be enabled beside it so the agent can see commits to the service between the start time and now. CloudWatch stays off.
 
 ### 4. Deploy correlation
 

@@ -123,6 +123,7 @@ class Settings:
     datadog_api_key: str = ""
     datadog_app_key: str = ""
     datadog_service_tag: str = "service"
+    datadog_metric: str = ""
     datadog_lookback_minutes: int = 60
     loki_url: str = ""
     loki_token: str = ""
@@ -212,6 +213,7 @@ class Settings:
             datadog_api_key=_env("DATADOG_API_KEY", ""),
             datadog_app_key=_env("DATADOG_APP_KEY", ""),
             datadog_service_tag=_env("DATADOG_SERVICE_TAG", "service"),
+            datadog_metric=_env("DATADOG_METRIC", ""),
             datadog_lookback_minutes=_int_env("DATADOG_LOOKBACK_MINUTES", 60, 1, 1440),
             loki_url=_env("LOKI_URL", ""),
             loki_token=_env("LOKI_TOKEN", ""),
