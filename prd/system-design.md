@@ -70,7 +70,7 @@ sequenceDiagram
   Worker->>DB: claim oldest queued run
   Worker->>Logs: timeout, timed out, 500, and a few words from the brief
   Logs-->>Worker: matching lines
-  Worker->>Logs: one word or code from those lines
+  Worker->>Logs: one word or code from the log message or the commit subject
   Logs-->>Worker: any further lines
   Worker->>DB: store each matching line as evidence
   Worker->>Model: brief, matching lines, misses, and sources that were not checked

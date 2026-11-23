@@ -38,7 +38,7 @@ These are worth keeping. Later work should sit on them.
 
 Both call `investigate_text`. That function runs `gather`, stores every matching line, then asks `build_note_agent` for one reply with no tools. The requirements, the system design, and the command line describe that path. The tool-calling prompt is gone.
 
-The first search is still that fixed list. The run then searches once more, using one word or code from the lines that came back, and then writes the note.
+The first search is still that fixed list. The run then searches once more, using one word or code from the log message or the commit subject, and then writes the note.
 
 ### A timeout and a deploy write different errors
 
@@ -70,7 +70,7 @@ The first search is still that fixed list. The run then searches once more, usin
 
 ### The search asks one follow-up question
 
-`gather` searches `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three extra words from the brief. It then takes one status code, version, or word from the lines that came back, if that token was not already searched, and runs that query before the note is written. A code or a version is chosen before an ordinary word. GitHub is still asked once, not again for the follow-up. A metric line is not a source for that word.
+`gather` searches `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three extra words from the brief. It then takes one status code, version, or word from the lines that came back, if that token was not already searched, and runs that query before the note is written. A code or a version is chosen before an ordinary word. That token is read from the log message or the commit subject. The connector name, the log group, and the repository are not searched again. GitHub is still asked once, not again for the follow-up. A metric line is not a source for that word.
 
 ### Datadog can quote one metric
 
@@ -127,5 +127,6 @@ Each one is small enough to review, and each one is visible to a person using th
 14. Done. `/api/health` and `/metrics` say how many worker heartbeats are fresh. Health stays up while that count is at least one. A stale row does not count, and the text includes no host name. A down database stays 503 on the scrape and does not report zero workers.
 15. Done. CloudWatch, Datadog, Loki, and GitHub search from the case start when that start is older than their lookback, and they keep that same length. A case that began inside the lookback still searches the span ending now. A late investigation reads the hour the errors began. Local log files have no time index. A command-line brief keeps the span ending now unless it has a `Started` line.
 16. Done. When `DATADOG_METRIC` is set, a run queries that one metric for the case service over the same span as the logs. The line stored on the case is a symptom: last and peak. A query that does not name this service is not called. An unset metric is recorded as not checked, and the log search still runs. The follow-up word search does not query the metric again.
+17. Done. The follow-up query is a status code, a version, or a word from the log message or the commit subject. It does not search the connector name, the log group, or the repository that this product wrote in front of that line.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.

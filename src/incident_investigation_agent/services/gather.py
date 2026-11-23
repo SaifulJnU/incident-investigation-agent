@@ -244,6 +244,13 @@ def _queries(hint: str, service: str | None) -> tuple[str, ...]:
 
 
 _FILE_PREFIX = re.compile(r"^[^\s:]+:\d+:\s+")
+_DATADOG_LABEL = re.compile(r"^datadog \S+: ")
+_LOKI_LABEL = re.compile(r"^loki \S+: ")
+_GROUP_LABEL = re.compile(r"^[^\s:]+: ")
+_COMMIT_LABEL = re.compile(
+    r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\s+[0-9a-fA-F]{1,40}\s+"
+    r"(?:\d{4}-\d{2}-\d{2}T[\d:]+Z\s+)?"
+)
 
 
 def _follow_query(findings: tuple[Finding, ...], queries: tuple[str, ...], service: str | None) -> str | None:
@@ -251,14 +258,12 @@ def _follow_query(findings: tuple[Finding, ...], queries: tuple[str, ...], servi
 
     The first search does not know this token. A code or a version is used
     before an ordinary word, because that is the sharper second question.
+    The token comes from the log message or the commit subject. The connector
+    name, the log group, and the repository are labels this product added.
     A metric line is skipped. Its words were written here, not found in a log.
     """
     blocked = _blocked(queries, service)
-    texts = [
-        _FILE_PREFIX.sub("", item.summary, count=1)
-        for item in findings
-        if item.kind != "symptom"
-    ]
+    texts = [_follow_text(item) for item in findings if item.kind != "symptom"]
     for text in texts:
         for token in _STATUS_CODE.findall(text):
             if token not in blocked:
@@ -274,6 +279,20 @@ def _follow_query(findings: tuple[Finding, ...], queries: tuple[str, ...], servi
                 continue
             return word
     return None
+
+
+def _follow_text(item: Finding) -> str:
+    """The part of a stored line that came back from the other system."""
+    text = _FILE_PREFIX.sub("", item.summary, count=1)
+    if item.source == "search_datadog":
+        return _DATADOG_LABEL.sub("", text, count=1)
+    if item.source == "search_loki":
+        return _LOKI_LABEL.sub("", text, count=1)
+    if item.source == "search_cloudwatch":
+        return _GROUP_LABEL.sub("", text, count=1)
+    if item.source == "list_recent_commits":
+        return _COMMIT_LABEL.sub("", text, count=1)
+    return text
 
 
 def _blocked(queries: tuple[str, ...], service: str | None) -> set[str]:

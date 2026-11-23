@@ -7,6 +7,7 @@ from incident_investigation_agent.services.gather import (
     Finding,
     SearchBatch,
     _combine,
+    _follow_query,
     gather,
 )
 from incident_investigation_agent.services.investigation import _note_prompt
@@ -219,6 +220,68 @@ def test_one_word_from_the_first_lines_is_searched_before_the_note(tmp_path):
     assert "search_logs timeout:" in batch.text
     assert "search_logs certificate:" in batch.text
     assert any("certificate expired" in item.summary for item in batch.findings)
+
+
+def test_the_follow_up_reads_the_message_not_the_connector_label():
+    queries = ("timeout", "timed out", "500")
+    assert _follow_query(
+        (
+            Finding(
+                "log",
+                "datadog service:checkout-api: ERROR timeout from the certificate store",
+                "search_datadog",
+            ),
+        ),
+        queries,
+        "checkout-api",
+    ) == "certificate"
+    assert _follow_query(
+        (
+            Finding(
+                "log",
+                "loki service=checkout-api: ERROR timeout from the vault",
+                "search_loki",
+            ),
+        ),
+        queries,
+        "checkout-api",
+    ) == "vault"
+    assert _follow_query(
+        (
+            Finding(
+                "log",
+                "/aws/lambda/checkout-api: ERROR timeout from the vault",
+                "search_cloudwatch",
+            ),
+        ),
+        queries,
+        "checkout-api",
+    ) == "vault"
+    assert _follow_query(
+        (
+            Finding(
+                "change",
+                "acme/checkout-api abc1234 2026-09-23T12:00:00Z the certificate expired",
+                "list_recent_commits",
+            ),
+        ),
+        queries,
+        "checkout-api",
+    ) == "certificate"
+
+
+def test_the_follow_up_still_prefers_a_code_in_the_message():
+    assert _follow_query(
+        (
+            Finding(
+                "log",
+                "datadog service:checkout-api: ERROR timeout status=503",
+                "search_datadog",
+            ),
+        ),
+        ("timeout", "timed out", "500"),
+        "checkout-api",
+    ) == "503"
 
 
 def test_a_status_code_in_the_first_lines_is_the_follow_up(tmp_path):
