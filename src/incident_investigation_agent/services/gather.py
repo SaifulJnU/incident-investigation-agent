@@ -8,7 +8,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from incident_investigation_agent.core.config import Settings, enabled_connectors
 from incident_investigation_agent.infrastructure.connectors import (
@@ -19,6 +19,7 @@ from incident_investigation_agent.infrastructure.connectors import (
     loki,
     mcp,
 )
+from incident_investigation_agent.infrastructure.connectors.window import during, search_span
 
 log = logging.getLogger("incident_investigation_agent.gather")
 
@@ -157,6 +158,17 @@ class SearchBatch:
     findings: tuple[Finding, ...]
     misses: tuple[str, ...] = ()
     unchecked: tuple[str, ...] = ()
+    spans: tuple[Finding, ...] = ()
+
+
+# A finished search stores one timeline line. The unit matches the connector lookback.
+# Logs and the Datadog metric share one line. Local logs and MCP have no time index.
+_SPAN_SOURCES = (
+    ("cloudwatch", ("search_cloudwatch",), "CloudWatch", "cloudwatch_lookback_minutes", "minutes"),
+    ("datadog", ("search_datadog", "query_datadog_metric"), "Datadog", "datadog_lookback_minutes", "minutes"),
+    ("loki", ("search_loki",), "Loki", "loki_lookback_minutes", "minutes"),
+    ("github", ("list_recent_commits",), "GitHub", "github_lookback_hours", "hours"),
+)
 
 
 def gather(
@@ -187,18 +199,74 @@ def gather(
         )
         if more:
             batch = _merge(batch, _combine(_collect(more, timeout)))
+    batch = _with_spans(batch, _span_findings(settings, names, batch, started_at))
     _log_search(names, batch)
     return batch
 
 
 def _log_search(names: tuple[str, ...], batch: SearchBatch) -> None:
     log.info(
-        "search finished connectors=%s findings=%s misses=%s unchecked=%s",
+        "search finished connectors=%s findings=%s misses=%s unchecked=%s spans=%s",
         ",".join(names) or "-",
         len(batch.findings),
         len(batch.misses),
         len(batch.unchecked),
+        len(batch.spans),
     )
+
+
+def _with_spans(batch: SearchBatch, spans: tuple[Finding, ...]) -> SearchBatch:
+    if not spans:
+        return batch
+    return SearchBatch(batch.text, batch.findings, batch.misses, batch.unchecked, spans)
+
+
+def _span_findings(
+    settings: Settings,
+    names: tuple[str, ...],
+    batch: SearchBatch,
+    started_at: datetime | None,
+) -> tuple[Finding, ...]:
+    """One timeline line for each time-bounded search that finished.
+
+    The sentence uses the same span the connector queried. A source that was
+    not checked does not get a line. The follow-up search has already been
+    chosen, so this sentence is not searched again.
+    """
+    enabled = set(names)
+    findings: list[Finding] = []
+    for name, labels, title, attr, unit in _SPAN_SOURCES:
+        if name not in enabled:
+            continue
+        source = _finished_source(batch, labels)
+        if source is None:
+            continue
+        length = getattr(settings, attr)
+        lookback = timedelta(hours=length) if unit == "hours" else timedelta(minutes=length)
+        start, _end, anchored = search_span(started_at, lookback)
+        span = during(f"{length} {unit}", anchored, start)
+        findings.append(Finding("timeline", f"{title} searched {span}.", source))
+    return tuple(findings)
+
+
+def _finished_source(batch: SearchBatch, labels: tuple[str, ...]) -> str | None:
+    """The connector label that returned a line or a miss, preferring the first."""
+    label_set = set(labels)
+    found = None
+    for item in batch.findings:
+        if item.kind == "timeline" or item.source not in label_set:
+            continue
+        if item.source == labels[0]:
+            return item.source
+        found = found or item.source
+    for miss in batch.misses:
+        head = miss.split(" ", 1)[0]
+        if head not in label_set:
+            continue
+        if head == labels[0]:
+            return head
+        found = found or head
+    return found
 
 
 def _queries(hint: str, service: str | None) -> tuple[str, ...]:
@@ -325,7 +393,14 @@ def _merge(first: SearchBatch, second: SearchBatch) -> SearchBatch:
             seen_unchecked.add(line)
             unchecked.append(line)
     text = first.text if not second.text else f"{first.text}\n{second.text}"
-    return SearchBatch(text, tuple(findings), tuple(misses), tuple(unchecked))
+    spans = list(first.spans)
+    seen_spans = {item.summary for item in spans}
+    for item in second.spans:
+        if item.summary in seen_spans:
+            continue
+        seen_spans.add(item.summary)
+        spans.append(item)
+    return SearchBatch(text, tuple(findings), tuple(misses), tuple(unchecked), tuple(spans))
 
 
 def _fold(word: str) -> str:

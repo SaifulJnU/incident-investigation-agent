@@ -249,6 +249,7 @@ def investigate_text(
     does not call tools.
     """
     batch = gather(settings, service, prompt, case_started_at(prompt))
+    _record_findings(store, batch.spans)
     _record_findings(store, batch.findings)
     note = _note_prompt(prompt, batch)
     return message_text(build_note_agent(settings)(note))
@@ -266,9 +267,14 @@ def _record_findings(store, findings) -> None:
 
 
 def _note_prompt(prompt: str, batch: SearchBatch) -> str:
-    """One copy of each matching line, then what was not checked."""
+    """The span each finished search used, then one copy of each matching line."""
     base = prompt.split(BRIEF_TAIL)[0].rstrip() if BRIEF_TAIL in prompt else prompt.rstrip()
-    parts = [base, "", "Matching lines:"]
+    parts = [base, ""]
+    if batch.spans:
+        parts.append("What was searched:")
+        parts.extend(item.summary for item in batch.spans)
+        parts.append("")
+    parts.append("Matching lines:")
     if batch.findings:
         parts.extend(item.summary for item in batch.findings)
     else:

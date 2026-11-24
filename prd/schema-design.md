@@ -268,6 +268,7 @@ The engineer clicks Investigate. The HTTP request does not wait for the model.
 | Worker claims | that row becomes `running`; if the incident is `open`, it becomes `investigating` |
 | Worker searches | no database write for the search call itself. Queries are `timeout`, `timed out`, `500`, then a few words from the brief, then one word or code from the log message or the commit subject |
 | Worker keeps a matching line | `evidence` insert on the same `incident_id`. `kind` is `log`, or `change` for a commit. `source` is the connector or the log file name. `summary` is at most 2000 characters |
+| Worker names the span | `evidence` insert, `kind` = `timeline`, one row for each of CloudWatch, Datadog, Loki, and GitHub that finished a search. The summary names the span. A source that was not checked does not get this row. Local logs and MCP do not |
 | Success | run `status` = `completed`, `report` = the note, `finished_at` set. Incident returns to `open` if it is still `investigating`. A second success leaves that note |
 | Failure | run `status` = `failed`, `error` set, `report` left null. Same incident status rule. A second finish leaves this error |
 

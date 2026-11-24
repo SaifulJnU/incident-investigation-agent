@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from incident_investigation_agent.core.config import Settings
@@ -22,6 +23,7 @@ def test_local_searches_run_together_and_keep_hits():
     assert any("vault" in line for line in summaries)
     assert any("status=500" in line for line in summaries)
     assert all(item.kind == "log" for item in batch.findings)
+    assert batch.spans == ()
     assert len(summaries) == len(set(summaries))
 
 
@@ -331,6 +333,9 @@ def test_datadog_metric_is_a_symptom_and_is_not_asked_again(monkeypatch):
     assert batch.text.count("query_datadog_metric:") == 1
     assert "search_datadog 503:" in batch.text
     assert "search_datadog peak:" not in batch.text
+    assert batch.spans == (
+        Finding("timeline", "Datadog searched the last 60 minutes.", "search_datadog"),
+    )
 
 
 def test_an_unset_datadog_metric_is_unchecked_and_the_logs_stay(monkeypatch):
@@ -350,6 +355,9 @@ def test_an_unset_datadog_metric_is_unchecked_and_the_logs_stay(monkeypatch):
     batch = gather(settings, "checkout-api")
     assert any(item.kind == "log" and "vault timeout" in item.summary for item in batch.findings)
     assert all(item.kind != "symptom" for item in batch.findings)
+    assert batch.spans == (
+        Finding("timeline", "Datadog searched the last 60 minutes.", "search_datadog"),
+    )
     assert "Datadog metrics were not queried. Set DATADOG_METRIC." in batch.unchecked
     assert "secret-key" not in batch.text
 
@@ -404,6 +412,125 @@ def test_note_prompt_leads_with_each_match_once():
     assert note.index("vault timeout") < note.index("CloudWatch is not configured")
     assert note.index("CloudWatch is not configured") < note.index("No match for search_logs climbed.")
     assert note.endswith("Write the incident note from these lines.")
+
+
+def test_a_finished_search_names_the_span_ending_now(monkeypatch):
+    def logs(_settings, _service, query, _limit, started_at=None):
+        return "checkout-api: ERROR timeout status=503"
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.gather.cloudwatch.search_cloudwatch_logs",
+        logs,
+    )
+    settings = _settings(Path("examples/logs"), ("cloudwatch",))
+    batch = gather(settings, "checkout-api", started_at=datetime.now(timezone.utc))
+    assert batch.spans == (
+        Finding("timeline", "CloudWatch searched the last 60 minutes.", "search_cloudwatch"),
+    )
+    assert "search_cloudwatch minutes:" not in batch.text
+    assert "search_cloudwatch cloudwatch:" not in batch.text
+    assert "search_cloudwatch 503:" in batch.text
+    assert any(item.kind == "log" and "status=503" in item.summary for item in batch.findings)
+
+
+def test_an_older_case_names_the_span_from_its_start(monkeypatch):
+    def logs(_settings, _service, query, _limit, started_at=None):
+        return "No CloudWatch events matched 'timeout' in /aws/ecs/checkout-api during the last 60 minutes."
+
+    def commits(_settings, _service, started_at=None):
+        return "No commits on acme/checkout-api in the last 24 hours."
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.gather.cloudwatch.search_cloudwatch_logs",
+        logs,
+    )
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.gather.github.list_commits",
+        commits,
+    )
+    settings = _settings(Path("examples/logs"), ("cloudwatch", "github"))
+    opened = datetime(2026, 9, 22, 14, 2, tzinfo=timezone.utc)
+    batch = gather(settings, "checkout-api", started_at=opened)
+    assert [item.summary for item in batch.spans] == [
+        "CloudWatch searched 60 minutes from 2026-09-22T14:02:00Z.",
+        "GitHub searched 24 hours from 2026-09-22T14:02:00Z.",
+    ]
+    assert [item.kind for item in batch.spans] == ["timeline", "timeline"]
+    assert [item.source for item in batch.spans] == ["search_cloudwatch", "list_recent_commits"]
+    assert batch.findings == ()
+
+
+def test_a_source_that_was_not_checked_does_not_name_a_span(monkeypatch):
+    def logs(_settings, _service, query, _limit, started_at=None):
+        return (
+            "CloudWatch is not configured. Set CLOUDWATCH_LOG_GROUP_PREFIX "
+            "or CLOUDWATCH_LOG_GROUPS."
+        )
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.gather.cloudwatch.search_cloudwatch_logs",
+        logs,
+    )
+    settings = _settings(Path("examples/logs"), ("cloudwatch",))
+    batch = gather(settings, "checkout-api")
+    assert batch.spans == ()
+    assert batch.findings == ()
+    assert batch.unchecked
+
+
+def test_the_note_is_told_which_span_was_searched():
+    prompt = "Incident: Checkout\nSearches run before this note is written."
+    batch = SearchBatch(
+        "",
+        (Finding("log", "api.log:3: vault timeout", "api.log"),),
+        spans=(Finding("timeline", "CloudWatch searched the last 60 minutes.", "search_cloudwatch"),),
+    )
+    note = _note_prompt(prompt, batch)
+    assert note.index("What was searched:") < note.index("CloudWatch searched the last 60 minutes.")
+    assert note.index("CloudWatch searched the last 60 minutes.") < note.index("Matching lines:")
+    assert note.index("Matching lines:") < note.index("vault timeout")
+
+
+def test_investigate_text_stores_the_span_before_the_note(monkeypatch, tmp_path):
+    from incident_investigation_agent.infrastructure.file_case import CaseStore
+    from incident_investigation_agent.services.investigation import investigate_text
+
+    def fake_gather(_settings, _service, _hint, _started):
+        return SearchBatch(
+            "",
+            (Finding("log", "api.log:1: ERROR vault timeout", "api.log"),),
+            spans=(Finding("timeline", "CloudWatch searched the last 60 minutes.", "search_cloudwatch"),),
+        )
+
+    def fake_agent(_settings):
+        def run(note):
+            assert "What was searched:" in note
+            assert "CloudWatch searched the last 60 minutes." in note
+            return "Impact: checkout is failing."
+
+        return run
+
+    monkeypatch.setattr("incident_investigation_agent.services.investigation.gather", fake_gather)
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.investigation.build_note_agent",
+        fake_agent,
+    )
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.investigation.message_text",
+        lambda value: value,
+    )
+    store = CaseStore(tmp_path)
+    report = investigate_text(
+        _settings(tmp_path, ("cloudwatch",)),
+        store,
+        "Started: 2026-09-22T14:02:00+00:00\n",
+        "checkout-api",
+    )
+    assert report == "Impact: checkout is failing."
+    assert [item.summary for item in store.list()] == [
+        "CloudWatch searched the last 60 minutes.",
+        "api.log:1: ERROR vault timeout",
+    ]
 
 
 def _settings(log_dir: Path, connectors: tuple[str, ...], connector_timeout_seconds: int = 15, **overrides) -> Settings:

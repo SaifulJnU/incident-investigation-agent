@@ -68,6 +68,10 @@ The first search is still that fixed list. The run then searches once more, usin
 
 `.github/workflows/tests.yml` runs `pytest` on every push and pull request, on Python 3.12. `web/package-lock.json` pins the console install. `requirements.txt` pins the API image. `requirements-dev.txt` pins that same tree plus pytest, and the workflow installs from it.
 
+### The case names the span that was searched
+
+A finished CloudWatch, Datadog, Loki, or GitHub search stores one timeline line. It reads "CloudWatch searched the last 60 minutes." when the case started inside the lookback, and "CloudWatch searched 60 minutes from <start>." when the search moved to the case start. Datadog's logs and its metric share that one line. A source that was not checked does not get the line. Local logs and MCP have no time index, so they do not get one. The note is told the same sentence and is told to quote that span. The follow-up search does not read that sentence. A second run does not copy a span the case already has.
+
 ### The search asks one follow-up question
 
 `gather` searches `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three extra words from the brief. It then takes one status code, version, or word from the lines that came back, if that token was not already searched, and runs that query before the note is written. A code or a version is chosen before an ordinary word. That token is read from the log message or the commit subject. The connector name, the log group, and the repository are not searched again. GitHub is still asked once, not again for the follow-up. A metric line is not a source for that word.
@@ -128,5 +132,6 @@ Each one is small enough to review, and each one is visible to a person using th
 15. Done. CloudWatch, Datadog, Loki, and GitHub search from the case start when that start is older than their lookback, and they keep that same length. A case that began inside the lookback still searches the span ending now. A late investigation reads the hour the errors began. Local log files have no time index. A command-line brief keeps the span ending now unless it has a `Started` line.
 16. Done. When `DATADOG_METRIC` is set, a run queries that one metric for the case service over the same span as the logs. The line stored on the case is a symptom: last and peak. A query that does not name this service is not called. An unset metric is recorded as not checked, and the log search still runs. The follow-up word search does not query the metric again.
 17. Done. The follow-up query is a status code, a version, or a word from the log message or the commit subject. It does not search the connector name, the log group, or the repository that this product wrote in front of that line.
+18. Done. A finished CloudWatch, Datadog, Loki, or GitHub search stores one timeline line naming the span. A case that started inside the lookback reads "the last 60 minutes." A case that started earlier reads "60 minutes from <start>." Datadog's logs and its metric share that line. A source that was not checked does not get one. Local logs and MCP do not. The note is told the same sentence. The follow-up search does not read it.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.
