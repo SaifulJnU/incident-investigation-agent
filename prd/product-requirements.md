@@ -87,6 +87,7 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 - Before that call, the worker searches every enabled connector for `timeout`, `timed out`, and `500`, then at most two versions, two status codes, and three other words from the brief. It then searches once more for one status code, version, or word from the log message or the commit subject. The connector name, the log group, and the repository are not searched again. GitHub is asked for recent commits once, not again for that follow-up. When `DATADOG_METRIC` is set, Datadog is also asked once for that metric, not again for the follow-up.
 - CloudWatch, Datadog, and Loki use their lookback ending now when the case started inside that span. A case that started earlier is searched from its start time, for that same length. GitHub uses its hour lookback the same way. Local log files have no time index. A command-line brief with no `Started` line keeps the span ending now.
 - A CloudWatch, Datadog, Loki, or GitHub search that finishes stores one timeline line naming that span. Datadog's logs and its metric share the line. A source that was not checked does not get one. Local logs and MCP do not. The note is told the same sentence.
+- A log search that finishes stores one timeline line naming the words it queried. The follow-up is the last clause when that call finished. A query that timed out or failed is left off. GitHub and the Datadog metric do not get this line. Local logs and MCP do. The note is told the same sentence.
 - The worker stores each matching line as evidence, at most 2000 characters. The model does not choose the searches and does not call tools.
 - `DATADOG_METRIC` is one Datadog query. `SERVICE` in it is the case service. The query has to name that service, so a checkout case cannot read a payments metric. The call uses the same span as the Datadog logs. The case stores last and peak. When the setting is empty, the run says the metric was not queried.
 - The worker stores the model's final text as the incident note.
@@ -95,7 +96,7 @@ Intake plugins, later: a person can open a case by hand today. Slack and PagerDu
 ### 6.3 Evidence
 
 - A person can add a note of kind symptom, log, timeline, change, or hypothesis.
-- The worker adds the same kinds for each matching line it keeps. A log line is `log`. A GitHub commit is `change`. A Datadog metric is `symptom`. A finished CloudWatch, Datadog, Loki, or GitHub search also stores one timeline line that names the span. A matching line is stored at most 2000 characters. A longer line keeps its start and ends with `...`. A note a person writes is not cut by that limit.
+- The worker adds the same kinds for each matching line it keeps. A log line is `log`. A GitHub commit is `change`. A Datadog metric is `symptom`. A finished CloudWatch, Datadog, Loki, or GitHub search also stores one timeline line that names the span. A finished log search stores one timeline line that names the words it queried. GitHub and the Datadog metric do not. A matching line is stored at most 2000 characters. A longer line keeps its start and ends with `...`. A note a person writes is not cut by that limit.
 - The console groups them: timeline (symptom, timeline, change), hypotheses, log lines.
 
 ### 6.4 Tools that must be pluggable

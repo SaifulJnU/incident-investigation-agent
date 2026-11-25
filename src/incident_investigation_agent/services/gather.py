@@ -159,6 +159,8 @@ class SearchBatch:
     misses: tuple[str, ...] = ()
     unchecked: tuple[str, ...] = ()
     spans: tuple[Finding, ...] = ()
+    # (connector label, query) for each word search that returned a line or a miss.
+    asked: tuple[tuple[str, str], ...] = ()
 
 
 # A finished search stores one timeline line. The unit matches the connector lookback.
@@ -169,6 +171,15 @@ _SPAN_SOURCES = (
     ("loki", ("search_loki",), "Loki", "loki_lookback_minutes", "minutes"),
     ("github", ("list_recent_commits",), "GitHub", "github_lookback_hours", "hours"),
 )
+
+# A finished word search stores one timeline line. GitHub and the metric are not word searches.
+_QUERY_TITLES = {
+    "search_logs": "Local logs",
+    "search_cloudwatch": "CloudWatch",
+    "search_datadog": "Datadog",
+    "search_loki": "Loki",
+    "search_mcp": "MCP",
+}
 
 
 def gather(
@@ -199,26 +210,30 @@ def gather(
         )
         if more:
             batch = _merge(batch, _combine(_collect(more, timeout)))
-    batch = _with_spans(batch, _span_findings(settings, names, batch, started_at))
+    batch = _with_spans(
+        batch,
+        _span_findings(settings, names, batch, started_at) + _query_findings(batch, follow),
+    )
     _log_search(names, batch)
     return batch
 
 
 def _log_search(names: tuple[str, ...], batch: SearchBatch) -> None:
     log.info(
-        "search finished connectors=%s findings=%s misses=%s unchecked=%s spans=%s",
+        "search finished connectors=%s findings=%s misses=%s unchecked=%s spans=%s queries=%s",
         ",".join(names) or "-",
         len(batch.findings),
         len(batch.misses),
         len(batch.unchecked),
         len(batch.spans),
+        len(batch.asked),
     )
 
 
 def _with_spans(batch: SearchBatch, spans: tuple[Finding, ...]) -> SearchBatch:
     if not spans:
         return batch
-    return SearchBatch(batch.text, batch.findings, batch.misses, batch.unchecked, spans)
+    return SearchBatch(batch.text, batch.findings, batch.misses, batch.unchecked, spans, batch.asked)
 
 
 def _span_findings(
@@ -267,6 +282,44 @@ def _finished_source(batch: SearchBatch, labels: tuple[str, ...]) -> str | None:
             return head
         found = found or head
     return found
+
+
+def _query_findings(batch: SearchBatch, follow: str | None) -> tuple[Finding, ...]:
+    """One timeline line for each log search that finished at least one query.
+
+    The sentence names only the queries that returned a line or a miss. A query
+    that timed out or failed is left off. The follow-up, when it finished, is
+    the last clause. GitHub and the metric are not word searches. This sentence
+    is built after the follow-up is chosen, so it is not searched again.
+    """
+    by_label: dict[str, list[str]] = {}
+    for label, query in batch.asked:
+        if label not in _QUERY_TITLES or not query:
+            continue
+        words = by_label.setdefault(label, [])
+        if query not in words:
+            words.append(query)
+    return tuple(
+        Finding("timeline", f"{_QUERY_TITLES[label]} searched {_query_clause(words, follow)}.", label)
+        for label, words in by_label.items()
+    )
+
+
+def _query_clause(words: list[str], follow: str | None) -> str:
+    if follow and follow in words:
+        head = [word for word in words if word != follow]
+        if head:
+            return f"{_join_queries(head)}, then {follow}"
+        return follow
+    return _join_queries(words)
+
+
+def _join_queries(words: list[str]) -> str:
+    if len(words) == 1:
+        return words[0]
+    if len(words) == 2:
+        return f"{words[0]} and {words[1]}"
+    return ", ".join(words[:-1]) + ", and " + words[-1]
 
 
 def _queries(hint: str, service: str | None) -> tuple[str, ...]:
@@ -400,7 +453,14 @@ def _merge(first: SearchBatch, second: SearchBatch) -> SearchBatch:
             continue
         seen_spans.add(item.summary)
         spans.append(item)
-    return SearchBatch(text, tuple(findings), tuple(misses), tuple(unchecked), tuple(spans))
+    asked = list(first.asked)
+    seen_asked = set(asked)
+    for item in second.asked:
+        if item in seen_asked:
+            continue
+        seen_asked.add(item)
+        asked.append(item)
+    return SearchBatch(text, tuple(findings), tuple(misses), tuple(unchecked), tuple(spans), tuple(asked))
 
 
 def _fold(word: str) -> str:
@@ -547,6 +607,7 @@ def _combine(blocks: list[tuple[str, str, str]]) -> SearchBatch:
     misses: list[str] = []
     unchecked: list[str] = []
     unchecked_seen: set[str] = set()
+    asked: list[tuple[str, str]] = []
     for label, query, body in blocks:
         title = f"{label} {query}".strip()
         lines.append(f"{title}:")
@@ -568,6 +629,8 @@ def _combine(blocks: list[tuple[str, str, str]]) -> SearchBatch:
             seen.add(summary)
             findings.append(Finding(kind, summary, _source(label, summary)))
         if hits:
+            if query:
+                asked.append((label, query))
             continue
         if status and not _miss_line(status):
             if status not in unchecked_seen:
@@ -575,7 +638,9 @@ def _combine(blocks: list[tuple[str, str, str]]) -> SearchBatch:
                 unchecked.append(status)
             continue
         misses.append(title)
-    return SearchBatch("\n".join(lines), tuple(findings), tuple(misses), tuple(unchecked))
+        if query:
+            asked.append((label, query))
+    return SearchBatch("\n".join(lines), tuple(findings), tuple(misses), tuple(unchecked), (), tuple(asked))
 
 
 def _clip_finding(summary: str) -> str:

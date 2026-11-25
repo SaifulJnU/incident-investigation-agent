@@ -23,7 +23,13 @@ def test_local_searches_run_together_and_keep_hits():
     assert any("vault" in line for line in summaries)
     assert any("status=500" in line for line in summaries)
     assert all(item.kind == "log" for item in batch.findings)
-    assert batch.spans == ()
+    assert batch.spans == (
+        Finding(
+            "timeline",
+            "Local logs searched timeout, timed out, and 500, then upstream.",
+            "search_logs",
+        ),
+    )
     assert len(summaries) == len(set(summaries))
 
 
@@ -335,6 +341,11 @@ def test_datadog_metric_is_a_symptom_and_is_not_asked_again(monkeypatch):
     assert "search_datadog peak:" not in batch.text
     assert batch.spans == (
         Finding("timeline", "Datadog searched the last 60 minutes.", "search_datadog"),
+        Finding(
+            "timeline",
+            "Datadog searched timeout, timed out, and 500, then 503.",
+            "search_datadog",
+        ),
     )
 
 
@@ -357,6 +368,11 @@ def test_an_unset_datadog_metric_is_unchecked_and_the_logs_stay(monkeypatch):
     assert all(item.kind != "symptom" for item in batch.findings)
     assert batch.spans == (
         Finding("timeline", "Datadog searched the last 60 minutes.", "search_datadog"),
+        Finding(
+            "timeline",
+            "Datadog searched timeout, timed out, and 500, then vault.",
+            "search_datadog",
+        ),
     )
     assert "Datadog metrics were not queried. Set DATADOG_METRIC." in batch.unchecked
     assert "secret-key" not in batch.text
@@ -426,8 +442,14 @@ def test_a_finished_search_names_the_span_ending_now(monkeypatch):
     batch = gather(settings, "checkout-api", started_at=datetime.now(timezone.utc))
     assert batch.spans == (
         Finding("timeline", "CloudWatch searched the last 60 minutes.", "search_cloudwatch"),
+        Finding(
+            "timeline",
+            "CloudWatch searched timeout, timed out, and 500, then 503.",
+            "search_cloudwatch",
+        ),
     )
     assert "search_cloudwatch minutes:" not in batch.text
+    assert "search_cloudwatch searched:" not in batch.text
     assert "search_cloudwatch cloudwatch:" not in batch.text
     assert "search_cloudwatch 503:" in batch.text
     assert any(item.kind == "log" and "status=503" in item.summary for item in batch.findings)
@@ -454,9 +476,14 @@ def test_an_older_case_names_the_span_from_its_start(monkeypatch):
     assert [item.summary for item in batch.spans] == [
         "CloudWatch searched 60 minutes from 2026-09-22T14:02:00Z.",
         "GitHub searched 24 hours from 2026-09-22T14:02:00Z.",
+        "CloudWatch searched timeout, timed out, and 500.",
     ]
-    assert [item.kind for item in batch.spans] == ["timeline", "timeline"]
-    assert [item.source for item in batch.spans] == ["search_cloudwatch", "list_recent_commits"]
+    assert [item.kind for item in batch.spans] == ["timeline", "timeline", "timeline"]
+    assert [item.source for item in batch.spans] == [
+        "search_cloudwatch",
+        "list_recent_commits",
+        "search_cloudwatch",
+    ]
     assert batch.findings == ()
 
 
@@ -476,6 +503,46 @@ def test_a_source_that_was_not_checked_does_not_name_a_span(monkeypatch):
     assert batch.spans == ()
     assert batch.findings == ()
     assert batch.unchecked
+
+
+def test_a_query_that_does_not_finish_is_left_off_the_line(monkeypatch):
+    def logs(_settings, _service, query, _limit, started_at=None):
+        if query == "timed out":
+            time.sleep(2)
+            return "should not be kept"
+        return "checkout-api: ERROR timeout status=503"
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.gather.cloudwatch.search_cloudwatch_logs",
+        logs,
+    )
+    settings = _settings(Path("examples/logs"), ("cloudwatch",), connector_timeout_seconds=1)
+    batch = gather(settings, "checkout-api")
+    assert [item.summary for item in batch.spans] == [
+        "CloudWatch searched the last 60 minutes.",
+        "CloudWatch searched timeout and 500, then 503.",
+    ]
+
+
+def test_the_note_is_told_which_words_were_searched():
+    prompt = "Incident: Checkout\nSearches run before this note is written."
+    batch = SearchBatch(
+        "",
+        (Finding("log", "api.log:3: vault timeout", "api.log"),),
+        spans=(
+            Finding("timeline", "CloudWatch searched the last 60 minutes.", "search_cloudwatch"),
+            Finding(
+                "timeline",
+                "CloudWatch searched timeout, timed out, and 500, then 503.",
+                "search_cloudwatch",
+            ),
+        ),
+    )
+    note = _note_prompt(prompt, batch)
+    assert note.index("What was searched:") < note.index(
+        "CloudWatch searched timeout, timed out, and 500, then 503."
+    )
+    assert note.index("then 503.") < note.index("Matching lines:")
 
 
 def test_the_note_is_told_which_span_was_searched():
@@ -499,13 +566,21 @@ def test_investigate_text_stores_the_span_before_the_note(monkeypatch, tmp_path)
         return SearchBatch(
             "",
             (Finding("log", "api.log:1: ERROR vault timeout", "api.log"),),
-            spans=(Finding("timeline", "CloudWatch searched the last 60 minutes.", "search_cloudwatch"),),
+            spans=(
+                Finding("timeline", "CloudWatch searched the last 60 minutes.", "search_cloudwatch"),
+                Finding(
+                    "timeline",
+                    "CloudWatch searched timeout, timed out, and 500, then 503.",
+                    "search_cloudwatch",
+                ),
+            ),
         )
 
     def fake_agent(_settings):
         def run(note):
             assert "What was searched:" in note
             assert "CloudWatch searched the last 60 minutes." in note
+            assert "CloudWatch searched timeout, timed out, and 500, then 503." in note
             return "Impact: checkout is failing."
 
         return run
@@ -529,6 +604,7 @@ def test_investigate_text_stores_the_span_before_the_note(monkeypatch, tmp_path)
     assert report == "Impact: checkout is failing."
     assert [item.summary for item in store.list()] == [
         "CloudWatch searched the last 60 minutes.",
+        "CloudWatch searched timeout, timed out, and 500, then 503.",
         "api.log:1: ERROR vault timeout",
     ]
 

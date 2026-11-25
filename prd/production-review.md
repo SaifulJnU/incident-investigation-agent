@@ -16,7 +16,7 @@ It is not yet a service a company should page on. The record, the queue, and the
 | Case record | Strong | Status history, actors, evidence kept apart from the note, one active run per case |
 | Access | Strong for one company | 401 without a token, 403 for a service outside the grant, 404 for another service's case, dev login refused when `APP_ENV=prod` |
 | Queue | Right shape, small ceiling | `FOR UPDATE SKIP LOCKED`, a cap of 32 waiting runs per service, a 15-second connector timeout, a 20-minute run timeout |
-| Investigation | The weak part | The console does not let the model search. A word list does. A case older than the lookback is searched from its start, for that same length. When Datadog is given one metric, that query uses the same span and the note can quote last and peak |
+| Investigation | The weak part | The console does not let the model search. A word list does. A case older than the lookback is searched from its start, for that same length. When Datadog is given one metric, that query uses the same span and the note can quote last and peak. A finished log search names the words it queried |
 | Operate it | Thin, with a queue snapshot | Live, ready, and a worker heartbeat exist. `/api/health` says how many heartbeats are fresh. `/api/metrics` counts queued, running, and recently finished runs, and it includes no case text. `/metrics` repeats those counts, including the worker count, as Prometheus text for a scraper the company already runs. The API does not push them. A push runs pytest |
 | Scale | One company, a quiet hour | A second worker can run. A busy hour of investigations will queue, then return 429 |
 
@@ -71,6 +71,10 @@ The first search is still that fixed list. The run then searches once more, usin
 ### The case names the span that was searched
 
 A finished CloudWatch, Datadog, Loki, or GitHub search stores one timeline line. It reads "CloudWatch searched the last 60 minutes." when the case started inside the lookback, and "CloudWatch searched 60 minutes from <start>." when the search moved to the case start. Datadog's logs and its metric share that one line. A source that was not checked does not get the line. Local logs and MCP have no time index, so they do not get one. The note is told the same sentence and is told to quote that span. The follow-up search does not read that sentence. A second run does not copy a span the case already has.
+
+### The case names the words that were searched
+
+A finished log search stores one timeline line. It reads "CloudWatch searched timeout, timed out, and 500, then 503." when the follow-up finished, and "CloudWatch searched timeout, timed out, and 500." when the follow-up did not. A query that timed out or failed is left off. GitHub lists commits, and the Datadog metric is one query, so neither gets this line. A source that was not checked does not get it. Local logs and MCP do. The note is told the same sentence and is told to quote those words. The follow-up search does not read that sentence. A second run does not copy a line the case already has.
 
 ### The search asks one follow-up question
 
@@ -133,5 +137,6 @@ Each one is small enough to review, and each one is visible to a person using th
 16. Done. When `DATADOG_METRIC` is set, a run queries that one metric for the case service over the same span as the logs. The line stored on the case is a symptom: last and peak. A query that does not name this service is not called. An unset metric is recorded as not checked, and the log search still runs. The follow-up word search does not query the metric again.
 17. Done. The follow-up query is a status code, a version, or a word from the log message or the commit subject. It does not search the connector name, the log group, or the repository that this product wrote in front of that line.
 18. Done. A finished CloudWatch, Datadog, Loki, or GitHub search stores one timeline line naming the span. A case that started inside the lookback reads "the last 60 minutes." A case that started earlier reads "60 minutes from <start>." Datadog's logs and its metric share that line. A source that was not checked does not get one. Local logs and MCP do not. The note is told the same sentence. The follow-up search does not read it.
+19. Done. A finished log search stores one timeline line naming the words it queried. The line reads "CloudWatch searched timeout, timed out, and 500, then 503." when the follow-up finished, and leaves that clause off when it did not. A query that timed out or failed is not named. GitHub and the Datadog metric do not get this line. A source that was not checked does not. Local logs and MCP do. The note is told the same sentence. The follow-up search does not read it.
 
 Leave Slack and PagerDuty intake until a case opened by hand is something an on-call engineer trusts. Intake onto a weak search just creates more cases.
