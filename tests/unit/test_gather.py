@@ -418,15 +418,16 @@ def test_note_prompt_leads_with_each_match_once():
             Finding("log", "api.log:3: vault timeout status=500", "api.log"),
             Finding("log", "api.log:4: vault connection timed out", "api.log"),
         ),
-        misses=("search_logs climbed",),
+        misses=("search_logs climbed", "list_recent_commits"),
         unchecked=("CloudWatch is not configured. Set CLOUDWATCH_LOG_GROUP_PREFIX.",),
     )
     note = _note_prompt(prompt, batch)
     assert "Searches run before this note is written." not in note
     assert note.count("vault timeout") == 1
     assert "api.log:4: vault connection timed out" in note
+    assert "search_logs climbed" not in note
     assert note.index("vault timeout") < note.index("CloudWatch is not configured")
-    assert note.index("CloudWatch is not configured") < note.index("No match for search_logs climbed.")
+    assert note.index("CloudWatch is not configured") < note.index("No match for list_recent_commits.")
     assert note.endswith("Write the incident note from these lines.")
 
 
@@ -477,11 +478,13 @@ def test_an_older_case_names_the_span_from_its_start(monkeypatch):
         "CloudWatch searched 60 minutes from 2026-09-22T14:02:00Z.",
         "GitHub searched 24 hours from 2026-09-22T14:02:00Z.",
         "CloudWatch searched timeout, timed out, and 500.",
+        "CloudWatch returned no lines for timeout, timed out, and 500.",
     ]
-    assert [item.kind for item in batch.spans] == ["timeline", "timeline", "timeline"]
+    assert [item.kind for item in batch.spans] == ["timeline", "timeline", "timeline", "timeline"]
     assert [item.source for item in batch.spans] == [
         "search_cloudwatch",
         "list_recent_commits",
+        "search_cloudwatch",
         "search_cloudwatch",
     ]
     assert batch.findings == ()
@@ -522,6 +525,31 @@ def test_a_query_that_does_not_finish_is_left_off_the_line(monkeypatch):
         "CloudWatch searched the last 60 minutes.",
         "CloudWatch searched timeout and 500, then 503.",
     ]
+    assert all("returned no lines" not in item.summary for item in batch.spans)
+
+
+def test_a_query_that_returns_no_lines_is_named(monkeypatch):
+    def logs(_settings, _service, query, _limit, started_at=None):
+        if query == "timeout":
+            return "checkout-api: ERROR timeout status=503"
+        return "No CloudWatch events matched 'x' in /aws/ecs/checkout-api during the last 60 minutes."
+
+    monkeypatch.setattr(
+        "incident_investigation_agent.services.gather.cloudwatch.search_cloudwatch_logs",
+        logs,
+    )
+    settings = _settings(Path("examples/logs"), ("cloudwatch",))
+    batch = gather(settings, "checkout-api")
+    assert [item.summary for item in batch.spans] == [
+        "CloudWatch searched the last 60 minutes.",
+        "CloudWatch searched timeout, timed out, and 500, then 503.",
+        "CloudWatch returned no lines for timed out and 500, then 503.",
+    ]
+    assert "search_cloudwatch returned:" not in batch.text
+    note = _note_prompt("Incident: Checkout\nSearches run before this note is written.", batch)
+    assert "CloudWatch returned no lines for timed out and 500, then 503." in note
+    assert "search_cloudwatch timed out" not in note
+    assert note.index("returned no lines") < note.index("Matching lines:")
 
 
 def test_the_note_is_told_which_words_were_searched():

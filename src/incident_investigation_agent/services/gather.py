@@ -212,7 +212,9 @@ def gather(
             batch = _merge(batch, _combine(_collect(more, timeout)))
     batch = _with_spans(
         batch,
-        _span_findings(settings, names, batch, started_at) + _query_findings(batch, follow),
+        _span_findings(settings, names, batch, started_at)
+        + _query_findings(batch, follow)
+        + _gap_findings(batch, follow),
     )
     _log_search(names, batch)
     return batch
@@ -301,6 +303,32 @@ def _query_findings(batch: SearchBatch, follow: str | None) -> tuple[Finding, ..
             words.append(query)
     return tuple(
         Finding("timeline", f"{_QUERY_TITLES[label]} searched {_query_clause(words, follow)}.", label)
+        for label, words in by_label.items()
+    )
+
+
+def _gap_findings(batch: SearchBatch, follow: str | None) -> tuple[Finding, ...]:
+    """One timeline line for each log search that finished with no lines.
+
+    The sentence names only the queries that returned a miss. A query that
+    returned a line, or that timed out or failed, is left off. GitHub and the
+    metric are not word searches. This sentence is built after the follow-up
+    is chosen, so it is not searched again.
+    """
+    by_label: dict[str, list[str]] = {}
+    for miss in batch.misses:
+        label, _, query = miss.partition(" ")
+        if label not in _QUERY_TITLES or not query:
+            continue
+        words = by_label.setdefault(label, [])
+        if query not in words:
+            words.append(query)
+    return tuple(
+        Finding(
+            "timeline",
+            f"{_QUERY_TITLES[label]} returned no lines for {_query_clause(words, follow)}.",
+            label,
+        )
         for label, words in by_label.items()
     )
 

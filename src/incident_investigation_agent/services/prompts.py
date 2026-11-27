@@ -6,4 +6,5 @@ If a source says it was not checked, say that. If a fact is not in the brief or 
 When a metric line states last and peak, quote those numbers. Do not invent a metric, a stack trace, or customer impact.
 When a line states the span that was searched, quote that span. Do not invent a different window.
 When a line names the words that were searched, quote those words. Do not invent a query.
+When a line says a query returned no lines, say that. Do not claim a matching line for that query.
 """

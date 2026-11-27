@@ -16,7 +16,7 @@ from incident_investigation_agent.db.session import database_ready
 from incident_investigation_agent.infrastructure.redact import configured_secrets, redact
 from incident_investigation_agent.repositories.cases import DbCaseStore, move_status
 from incident_investigation_agent.services.agent import build_note_agent
-from incident_investigation_agent.services.gather import SearchBatch, gather
+from incident_investigation_agent.services.gather import SearchBatch, _QUERY_TITLES, gather
 from incident_investigation_agent.domain.evidence import EvidenceStore
 from incident_investigation_agent.services.report import (
     BRIEF_TAIL,
@@ -267,7 +267,7 @@ def _record_findings(store, findings) -> None:
 
 
 def _note_prompt(prompt: str, batch: SearchBatch) -> str:
-    """The span each finished search used, then one copy of each matching line."""
+    """The span, the words, and any empty queries, then one copy of each matching line."""
     base = prompt.split(BRIEF_TAIL)[0].rstrip() if BRIEF_TAIL in prompt else prompt.rstrip()
     parts = [base, ""]
     if batch.spans:
@@ -282,10 +282,16 @@ def _note_prompt(prompt: str, batch: SearchBatch) -> str:
     if batch.unchecked:
         parts.extend(["", "Sources that were not checked:"])
         parts.extend(batch.unchecked)
-    if batch.misses:
-        parts.extend(["", "No match for " + ", ".join(batch.misses) + "."])
+    other = _other_misses(batch.misses)
+    if other:
+        parts.extend(["", "No match for " + ", ".join(other) + "."])
     parts.extend(["", "Write the incident note from these lines."])
     return "\n".join(parts)
+
+
+def _other_misses(misses: tuple[str, ...]) -> tuple[str, ...]:
+    """Word-search misses are already a timeline sentence. Keep the rest."""
+    return tuple(miss for miss in misses if miss.split(" ", 1)[0] not in _QUERY_TITLES)
 
 
 def _finish(

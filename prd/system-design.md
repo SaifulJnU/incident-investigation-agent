@@ -72,8 +72,8 @@ sequenceDiagram
   Logs-->>Worker: matching lines
   Worker->>Logs: one word or code from the log message or the commit subject
   Logs-->>Worker: any further lines
-  Worker->>DB: store each matching line, one timeline line naming the span, and one naming the words
-  Worker->>Model: brief, the span, the words, matching lines, misses, and sources that were not checked
+  Worker->>DB: store each matching line, one timeline line naming the span, one naming the words, and one naming the empty queries
+  Worker->>Model: brief, the span, the words, the empty queries, matching lines, and sources that were not checked
   Model-->>Worker: incident note
   Worker->>DB: save note, status=completed
   Console->>API: GET /api/incidents/{id}
@@ -95,7 +95,7 @@ Evidence already recorded:
 Searches run before this note is written.
 ```
 
-The worker removes that last line before the model call. The searches have already run. The `Started` line is the case time those searches use. CloudWatch, Datadog, Loki, and GitHub keep the lookback ending now when that time falls inside it. When the case started earlier, the search begins there and runs for the same length, so a late investigation still reads the hour the errors began. A search that finishes stores one timeline line naming that span, and the note is told the same sentence. A source that was not checked does not get the line. Local logs and MCP have no time index, so they do not get one either. A log search that finishes also stores one timeline line naming the words it queried, and the note is told that sentence. A query that did not finish is left off. GitHub and the Datadog metric do not get that line. Local logs and MCP do. When `DATADOG_METRIC` is set, Datadog is also asked once for that metric over the same span. The case stores last and peak as a symptom. A query that does not name this service is not called. Local logs read `LOG_DIR/<service>` and have no time index. In the local stack a checkout case reads `/app/examples/logs/checkout-api/api.log`. A case for another service cannot read that directory.
+The worker removes that last line before the model call. The searches have already run. The `Started` line is the case time those searches use. CloudWatch, Datadog, Loki, and GitHub keep the lookback ending now when that time falls inside it. When the case started earlier, the search begins there and runs for the same length, so a late investigation still reads the hour the errors began. A search that finishes stores one timeline line naming that span, and the note is told the same sentence. A source that was not checked does not get the line. Local logs and MCP have no time index, so they do not get one either. A log search that finishes also stores one timeline line naming the words it queried, and the note is told that sentence. A query that did not finish is left off. A query that finished with no lines stores one timeline line naming those words, and the note is told that sentence instead of the internal miss name. GitHub and the Datadog metric do not get either line. Local logs and MCP do. When `DATADOG_METRIC` is set, Datadog is also asked once for that metric over the same span. The case stores last and peak as a symptom. A query that does not name this service is not called. Local logs read `LOG_DIR/<service>` and have no time index. In the local stack a checkout case reads `/app/examples/logs/checkout-api/api.log`. A case for another service cannot read that directory.
 
 ## Plugin shape
 
